@@ -103,6 +103,7 @@ impl AgentResult {
 
 /// Builder for creating AgentResult instances.
 #[derive(Debug, Default)]
+#[allow(dead_code)]
 pub struct AgentResultBuilder {
     response: String,
     status: Option<AgentResultStatus>,
@@ -111,6 +112,7 @@ pub struct AgentResultBuilder {
     tokens_used: u64,
 }
 
+#[allow(dead_code)]
 impl AgentResultBuilder {
     /// Create a new builder.
     pub fn new() -> Self {
