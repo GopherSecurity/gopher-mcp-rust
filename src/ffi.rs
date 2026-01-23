@@ -1,10 +1,10 @@
 //! FFI bindings to the native gopher-orch library.
 
-use libloading::{Library, Symbol};
+use libloading::Library;
+use once_cell::sync::OnceCell;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_void};
 use std::path::PathBuf;
-use std::sync::OnceLock;
 
 /// Opaque handle to a native agent
 pub type AgentHandle = *mut c_void;
@@ -49,7 +49,7 @@ struct NativeLibrary {
 unsafe impl Send for NativeLibrary {}
 unsafe impl Sync for NativeLibrary {}
 
-static NATIVE_LIB: OnceLock<Option<NativeLibrary>> = OnceLock::new();
+static NATIVE_LIB: OnceCell<Option<NativeLibrary>> = OnceCell::new();
 
 fn get_library_path() -> PathBuf {
     // Try to find the library in common locations
@@ -92,36 +92,37 @@ fn load_library() -> Option<NativeLibrary> {
     unsafe {
         let library = Library::new(&lib_path).ok()?;
 
-        let agent_create_by_json: Symbol<AgentCreateByJsonFn> =
-            library.get(b"gopher_orch_agent_create_by_json").ok()?;
-        let agent_create_by_api_key: Symbol<AgentCreateByApiKeyFn> =
-            library.get(b"gopher_orch_agent_create_by_api_key").ok()?;
-        let agent_run: Symbol<AgentRunFn> =
-            library.get(b"gopher_orch_agent_run").ok()?;
-        let agent_release: Symbol<AgentReleaseFn> =
-            library.get(b"gopher_orch_agent_release").ok()?;
-        let agent_add_ref: Symbol<AgentAddRefFn> =
-            library.get(b"gopher_orch_agent_add_ref").ok()?;
-        let api_fetch_servers: Symbol<ApiFetchServersFn> =
-            library.get(b"gopher_orch_api_fetch_servers").ok()?;
-        let last_error: Symbol<LastErrorFn> =
-            library.get(b"gopher_orch_last_error").ok()?;
-        let clear_error: Symbol<ClearErrorFn> =
-            library.get(b"gopher_orch_clear_error").ok()?;
-        let free: Symbol<FreeFn> =
-            library.get(b"gopher_orch_free").ok()?;
+        // Get all symbols and copy the function pointers before moving library
+        let agent_create_by_json: AgentCreateByJsonFn =
+            *library.get(b"gopher_orch_agent_create_by_json").ok()?;
+        let agent_create_by_api_key: AgentCreateByApiKeyFn =
+            *library.get(b"gopher_orch_agent_create_by_api_key").ok()?;
+        let agent_run: AgentRunFn =
+            *library.get(b"gopher_orch_agent_run").ok()?;
+        let agent_release: AgentReleaseFn =
+            *library.get(b"gopher_orch_agent_release").ok()?;
+        let agent_add_ref: AgentAddRefFn =
+            *library.get(b"gopher_orch_agent_add_ref").ok()?;
+        let api_fetch_servers: ApiFetchServersFn =
+            *library.get(b"gopher_orch_api_fetch_servers").ok()?;
+        let last_error: LastErrorFn =
+            *library.get(b"gopher_orch_last_error").ok()?;
+        let clear_error: ClearErrorFn =
+            *library.get(b"gopher_orch_clear_error").ok()?;
+        let free: FreeFn =
+            *library.get(b"gopher_orch_free").ok()?;
 
         Some(NativeLibrary {
             _library: library,
-            agent_create_by_json: *agent_create_by_json,
-            agent_create_by_api_key: *agent_create_by_api_key,
-            agent_run: *agent_run,
-            agent_release: *agent_release,
-            agent_add_ref: *agent_add_ref,
-            api_fetch_servers: *api_fetch_servers,
-            last_error: *last_error,
-            clear_error: *clear_error,
-            free: *free,
+            agent_create_by_json,
+            agent_create_by_api_key,
+            agent_run,
+            agent_release,
+            agent_add_ref,
+            api_fetch_servers,
+            last_error,
+            clear_error,
+            free,
         })
     }
 }

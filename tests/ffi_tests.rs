@@ -122,8 +122,10 @@ fn test_create_with_empty_config() {
     let result = GopherAgent::create(config);
 
     assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(err.to_string().contains("API key or server config"));
+    match result {
+        Err(e) => assert!(e.to_string().contains("API key or server config")),
+        Ok(_) => panic!("Expected error for empty config"),
+    }
 }
 
 #[test]

@@ -1,41 +1,51 @@
 //! Error types for the gopher-orch SDK.
 
-use thiserror::Error;
+use std::error::Error as StdError;
+use std::fmt;
 
 /// Result type alias for gopher-orch operations.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Error types for gopher-orch operations.
-#[derive(Error, Debug)]
+#[derive(Debug)]
 pub enum Error {
     /// Error loading or using the native library.
-    #[error("Library error: {0}")]
     Library(String),
 
     /// Error creating an agent.
-    #[error("Agent error: {0}")]
     Agent(String),
 
     /// Invalid API key error.
-    #[error("API key error: {0}")]
     ApiKey(String),
 
     /// Connection error.
-    #[error("Connection error: {0}")]
     Connection(String),
 
     /// Timeout error.
-    #[error("Timeout error: {0}")]
     Timeout(String),
 
     /// Configuration error.
-    #[error("Configuration error: {0}")]
     Config(String),
 
     /// Agent has been disposed.
-    #[error("Agent has been disposed")]
     Disposed,
 }
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Library(msg) => write!(f, "Library error: {}", msg),
+            Error::Agent(msg) => write!(f, "Agent error: {}", msg),
+            Error::ApiKey(msg) => write!(f, "API key error: {}", msg),
+            Error::Connection(msg) => write!(f, "Connection error: {}", msg),
+            Error::Timeout(msg) => write!(f, "Timeout error: {}", msg),
+            Error::Config(msg) => write!(f, "Configuration error: {}", msg),
+            Error::Disposed => write!(f, "Agent has been disposed"),
+        }
+    }
+}
+
+impl StdError for Error {}
 
 impl Error {
     /// Create a new agent error.
