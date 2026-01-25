@@ -20,8 +20,10 @@ pub struct ErrorInfo {
 }
 
 // Type aliases for FFI function signatures
-type AgentCreateByJsonFn = unsafe extern "C" fn(*const c_char, *const c_char, *const c_char) -> AgentHandle;
-type AgentCreateByApiKeyFn = unsafe extern "C" fn(*const c_char, *const c_char, *const c_char) -> AgentHandle;
+type AgentCreateByJsonFn =
+    unsafe extern "C" fn(*const c_char, *const c_char, *const c_char) -> AgentHandle;
+type AgentCreateByApiKeyFn =
+    unsafe extern "C" fn(*const c_char, *const c_char, *const c_char) -> AgentHandle;
 type AgentRunFn = unsafe extern "C" fn(AgentHandle, *const c_char, u64) -> *mut c_char;
 type AgentReleaseFn = unsafe extern "C" fn(AgentHandle);
 type AgentAddRefFn = unsafe extern "C" fn(AgentHandle);
@@ -97,20 +99,14 @@ fn load_library() -> Option<NativeLibrary> {
             *library.get(b"gopher_orch_agent_create_by_json").ok()?;
         let agent_create_by_api_key: AgentCreateByApiKeyFn =
             *library.get(b"gopher_orch_agent_create_by_api_key").ok()?;
-        let agent_run: AgentRunFn =
-            *library.get(b"gopher_orch_agent_run").ok()?;
-        let agent_release: AgentReleaseFn =
-            *library.get(b"gopher_orch_agent_release").ok()?;
-        let agent_add_ref: AgentAddRefFn =
-            *library.get(b"gopher_orch_agent_add_ref").ok()?;
+        let agent_run: AgentRunFn = *library.get(b"gopher_orch_agent_run").ok()?;
+        let agent_release: AgentReleaseFn = *library.get(b"gopher_orch_agent_release").ok()?;
+        let agent_add_ref: AgentAddRefFn = *library.get(b"gopher_orch_agent_add_ref").ok()?;
         let api_fetch_servers: ApiFetchServersFn =
             *library.get(b"gopher_orch_api_fetch_servers").ok()?;
-        let last_error: LastErrorFn =
-            *library.get(b"gopher_orch_last_error").ok()?;
-        let clear_error: ClearErrorFn =
-            *library.get(b"gopher_orch_clear_error").ok()?;
-        let free: FreeFn =
-            *library.get(b"gopher_orch_free").ok()?;
+        let last_error: LastErrorFn = *library.get(b"gopher_orch_last_error").ok()?;
+        let clear_error: ClearErrorFn = *library.get(b"gopher_orch_clear_error").ok()?;
+        let free: FreeFn = *library.get(b"gopher_orch_free").ok()?;
 
         Some(NativeLibrary {
             _library: library,
@@ -168,11 +164,7 @@ pub fn agent_create_by_api_key(provider: &str, model: &str, api_key: &str) -> Ag
     let c_api_key = CString::new(api_key).unwrap();
 
     unsafe {
-        (lib.agent_create_by_api_key)(
-            c_provider.as_ptr(),
-            c_model.as_ptr(),
-            c_api_key.as_ptr(),
-        )
+        (lib.agent_create_by_api_key)(c_provider.as_ptr(), c_model.as_ptr(), c_api_key.as_ptr())
     }
 }
 
@@ -227,7 +219,9 @@ pub fn get_last_error() -> String {
         if error_info.is_null() || (*error_info).message.is_null() {
             return String::new();
         }
-        CStr::from_ptr((*error_info).message).to_string_lossy().into_owned()
+        CStr::from_ptr((*error_info).message)
+            .to_string_lossy()
+            .into_owned()
     }
 }
 

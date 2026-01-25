@@ -2,7 +2,7 @@
 //!
 //! These tests verify that the FFI bindings work correctly with the native library.
 
-use gopher_orch::{ConfigBuilder, GopherAgent, init, is_initialized};
+use gopher_orch::{init, is_initialized, ConfigBuilder, GopherAgent};
 use std::path::Path;
 
 const TEST_SERVER_CONFIG: &str = r#"{
@@ -106,7 +106,10 @@ fn test_create_agent_with_api_key() {
             assert!(!agent.is_disposed());
         }
         Err(e) => {
-            println!("Agent creation failed (expected with invalid API key): {}", e);
+            println!(
+                "Agent creation failed (expected with invalid API key): {}",
+                e
+            );
         }
     }
 }

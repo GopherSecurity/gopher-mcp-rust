@@ -212,6 +212,9 @@ mod tests {
         assert_eq!(AgentResultStatus::Success.to_string(), "SUCCESS");
         assert_eq!(AgentResultStatus::Error.to_string(), "ERROR");
         assert_eq!(AgentResultStatus::Timeout.to_string(), "TIMEOUT");
-        assert_eq!(AgentResultStatus::MaxIterationsReached.to_string(), "MAX_ITERATIONS_REACHED");
+        assert_eq!(
+            AgentResultStatus::MaxIterationsReached.to_string(),
+            "MAX_ITERATIONS_REACHED"
+        );
     }
 }

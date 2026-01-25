@@ -5,8 +5,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::ffi::{self, AgentHandle};
-use crate::result::AgentResult;
 use crate::init;
+use crate::result::AgentResult;
 
 /// Default timeout for agent queries (60 seconds).
 const DEFAULT_TIMEOUT_MS: u64 = 60_000;
@@ -39,7 +39,9 @@ impl GopherAgent {
                 config.server_config().unwrap_or(""),
             )
         } else {
-            return Err(Error::config("Either API key or server config must be provided"));
+            return Err(Error::config(
+                "Either API key or server config must be provided",
+            ));
         };
 
         if handle.is_null() {
@@ -70,7 +72,11 @@ impl GopherAgent {
     }
 
     /// Create a new GopherAgent with a server config.
-    pub fn create_with_server_config(provider: &str, model: &str, server_config: &str) -> Result<Self> {
+    pub fn create_with_server_config(
+        provider: &str,
+        model: &str,
+        server_config: &str,
+    ) -> Result<Self> {
         let config = crate::ConfigBuilder::new()
             .with_provider(provider)
             .with_model(model)
@@ -126,10 +132,13 @@ impl GopherAgent {
 
     /// Dispose of the agent, releasing native resources.
     fn dispose(&self) {
-        if self.disposed.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-            if !self.handle.is_null() {
-                ffi::agent_release(self.handle);
-            }
+        if self
+            .disposed
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+            && !self.handle.is_null()
+        {
+            ffi::agent_release(self.handle);
         }
     }
 }

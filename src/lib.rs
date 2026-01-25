@@ -25,16 +25,16 @@
 //! }
 //! ```
 
-mod ffi;
-mod error;
-mod config;
-mod result;
 mod agent;
+mod config;
+mod error;
+mod ffi;
+mod result;
 
-pub use error::{Error, Result};
-pub use config::{Config, ConfigBuilder};
-pub use result::{AgentResult, AgentResultStatus};
 pub use agent::GopherAgent;
+pub use config::{Config, ConfigBuilder};
+pub use error::{Error, Result};
+pub use result::{AgentResult, AgentResultStatus};
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Once;
@@ -49,7 +49,9 @@ pub fn init() -> Result<()> {
 
     INIT.call_once(|| {
         if !ffi::is_available() {
-            init_result = Err(Error::Library("Failed to load gopher-orch native library".into()));
+            init_result = Err(Error::Library(
+                "Failed to load gopher-orch native library".into(),
+            ));
             return;
         }
         INITIALIZED.store(true, Ordering::SeqCst);
