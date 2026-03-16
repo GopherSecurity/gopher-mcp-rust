@@ -3,6 +3,7 @@
 //! An OAuth-protected MCP server example demonstrating JWT token validation
 //! and scope-based access control for MCP tools.
 
+mod config;
 mod error;
 mod ffi;
 mod middleware;
