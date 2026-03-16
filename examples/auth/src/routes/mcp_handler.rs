@@ -5,8 +5,16 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use axum::{
+    extract::State,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Extension, Json,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+
+use crate::cors::{options_handler as cors_options, with_cors_headers};
 
 /// JSON-RPC 2.0 error codes.
 pub mod error_codes {
@@ -345,12 +353,37 @@ impl McpHandler {
     fn handle_ping(&self, id: Option<Value>) -> JsonRpcResponse {
         JsonRpcResponse::success(id, json!({}))
     }
+
+    /// Register a tool with the handler.
+    pub fn register_tool<F>(&mut self, name: &str, spec: ToolSpec, handler: F)
+    where
+        F: Fn(Value, &AuthContext) -> ToolResult + Send + Sync + 'static,
+    {
+        self.tools.insert(name.to_string(), (spec, Arc::new(handler)));
+    }
 }
 
 impl Default for McpHandler {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// MCP POST endpoint handler.
+///
+/// Handles JSON-RPC requests at /mcp and /rpc endpoints.
+pub async fn mcp_handler(
+    State(handler): State<Arc<McpHandler>>,
+    Extension(auth_context): Extension<AuthContext>,
+    Json(body): Json<Value>,
+) -> Response {
+    let response = handler.handle_request(body, &auth_context);
+    with_cors_headers(Json(response))
+}
+
+/// MCP OPTIONS endpoint handler for CORS preflight.
+pub async fn mcp_options() -> impl IntoResponse {
+    cors_options().await
 }
 
 #[cfg(test)]
