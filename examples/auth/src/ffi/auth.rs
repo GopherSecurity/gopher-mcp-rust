@@ -398,6 +398,39 @@ impl GopherAuthClient {
             self.handle = ptr::null_mut();
         }
     }
+
+    /// Create a dummy client for testing purposes.
+    ///
+    /// This client has a null handle and no library, and should only be
+    /// used in tests that need to check if a client exists without actually
+    /// performing any operations.
+    #[cfg(test)]
+    pub fn dummy() -> Self {
+        Self {
+            handle: ptr::null_mut(),
+            library: Arc::new(unsafe {
+                // Create a dummy library reference that won't be used
+                // This is safe because we never call any functions on it
+                Library::new("/dev/null").unwrap_or_else(|_| {
+                    // If /dev/null doesn't work, try a path that definitely exists
+                    #[cfg(target_os = "macos")]
+                    {
+                        Library::new("/usr/lib/libSystem.B.dylib").expect("Failed to load system library for test dummy")
+                    }
+                    #[cfg(target_os = "linux")]
+                    {
+                        Library::new("/lib/x86_64-linux-gnu/libc.so.6")
+                            .or_else(|_| Library::new("/lib/libc.so.6"))
+                            .expect("Failed to load system library for test dummy")
+                    }
+                    #[cfg(target_os = "windows")]
+                    {
+                        Library::new("kernel32.dll").expect("Failed to load system library for test dummy")
+                    }
+                })
+            }),
+        }
+    }
 }
 
 impl Drop for GopherAuthClient {

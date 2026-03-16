@@ -17,6 +17,7 @@ use crate::config::AuthServerConfig;
 use crate::cors::{
     CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS, CORS_ALLOW_ORIGIN, CORS_EXPOSE_HEADERS, CORS_MAX_AGE,
 };
+use crate::ffi::GopherAuthClient;
 
 /// Authentication context from JWT token validation.
 ///
@@ -41,11 +42,6 @@ impl AuthContext {
         self.scopes.split_whitespace().any(|s| s == scope)
     }
 }
-
-/// Placeholder type for the gopher-auth client.
-///
-/// Will be replaced with actual FFI bindings in a later implementation.
-pub struct GopherAuthClient;
 
 /// Shared state for the auth middleware.
 pub struct AuthState {
@@ -316,7 +312,7 @@ mod tests {
             auth_disabled: true,
             ..Default::default()
         };
-        let state = AuthState::new(Some(Arc::new(GopherAuthClient)), config);
+        let state = AuthState::new(Some(Arc::new(GopherAuthClient::dummy())), config);
 
         // Nothing requires auth when auth is disabled
         assert!(!state.requires_auth("/mcp"));
@@ -343,7 +339,7 @@ mod tests {
             auth_disabled: false,
             ..Default::default()
         };
-        let state = AuthState::new(Some(Arc::new(GopherAuthClient)), config);
+        let state = AuthState::new(Some(Arc::new(GopherAuthClient::dummy())), config);
 
         // Public paths don't require auth
         assert!(!state.requires_auth("/.well-known/oauth-protected-resource"));
@@ -361,7 +357,7 @@ mod tests {
             auth_disabled: false,
             ..Default::default()
         };
-        let state = AuthState::new(Some(Arc::new(GopherAuthClient)), config);
+        let state = AuthState::new(Some(Arc::new(GopherAuthClient::dummy())), config);
 
         // Protected paths require auth
         assert!(state.requires_auth("/mcp"));
@@ -377,7 +373,7 @@ mod tests {
             auth_disabled: false,
             ..Default::default()
         };
-        let state = AuthState::new(Some(Arc::new(GopherAuthClient)), config);
+        let state = AuthState::new(Some(Arc::new(GopherAuthClient::dummy())), config);
 
         // Unknown paths default to protected
         assert!(state.requires_auth("/api/unknown"));
