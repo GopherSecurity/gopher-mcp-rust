@@ -4,6 +4,7 @@
 //! and scope-based access control for MCP tools.
 
 mod config;
+mod cors;
 mod error;
 mod ffi;
 mod middleware;
