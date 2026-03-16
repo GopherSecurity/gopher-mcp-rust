@@ -3,10 +3,20 @@
 //! Provides OAuth/JWT authentication middleware for protecting MCP routes.
 //! Handles token extraction, validation, and scope-based access control.
 
-use axum::http::Request;
+use axum::{
+    body::Body,
+    extract::State,
+    http::{Method, Request, StatusCode},
+    middleware::Next,
+    response::{IntoResponse, Response},
+};
+use serde_json::json;
 use std::sync::Arc;
 
 use crate::config::AuthServerConfig;
+use crate::cors::{
+    CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS, CORS_ALLOW_ORIGIN, CORS_EXPOSE_HEADERS, CORS_MAX_AGE,
+};
 
 /// Authentication context from JWT token validation.
 ///
@@ -134,6 +144,133 @@ pub fn extract_token<B>(request: &Request<B>) -> Option<String> {
     }
 
     None
+}
+
+/// Create a CORS preflight response.
+///
+/// Returns 204 No Content with full CORS headers for OPTIONS requests.
+pub fn cors_preflight_response() -> Response {
+    Response::builder()
+        .status(StatusCode::NO_CONTENT)
+        .header("Access-Control-Allow-Origin", CORS_ALLOW_ORIGIN)
+        .header("Access-Control-Allow-Methods", CORS_ALLOW_METHODS)
+        .header("Access-Control-Allow-Headers", CORS_ALLOW_HEADERS)
+        .header("Access-Control-Expose-Headers", CORS_EXPOSE_HEADERS)
+        .header("Access-Control-Max-Age", CORS_MAX_AGE)
+        .body(Body::empty())
+        .unwrap()
+}
+
+/// Create an unauthorized response with WWW-Authenticate header.
+///
+/// Returns 401 Unauthorized with RFC 6750 Bearer scheme header and JSON body.
+///
+/// # Arguments
+///
+/// * `config` - Server configuration for resource metadata URL
+/// * `error` - OAuth error code (e.g., "invalid_token", "invalid_request")
+/// * `description` - Human-readable error description
+pub fn unauthorized_response(config: &AuthServerConfig, error: &str, description: &str) -> Response {
+    // Build WWW-Authenticate header value per RFC 6750
+    let www_authenticate = format!(
+        r#"Bearer realm="{server_url}", resource_metadata="{server_url}/.well-known/oauth-protected-resource", scope="{scopes}", error="{error}", error_description="{description}""#,
+        server_url = config.server_url,
+        scopes = config.allowed_scopes,
+        error = error,
+        description = description
+    );
+
+    let body = json!({
+        "error": error,
+        "error_description": description
+    });
+
+    Response::builder()
+        .status(StatusCode::UNAUTHORIZED)
+        .header("WWW-Authenticate", www_authenticate)
+        .header("Content-Type", "application/json")
+        .header("Access-Control-Allow-Origin", CORS_ALLOW_ORIGIN)
+        .header("Access-Control-Expose-Headers", CORS_EXPOSE_HEADERS)
+        .body(Body::from(serde_json::to_string(&body).unwrap_or_default()))
+        .unwrap()
+}
+
+/// Authentication middleware.
+///
+/// Validates bearer tokens and injects AuthContext into request extensions.
+///
+/// # Flow
+///
+/// 1. OPTIONS requests → CORS preflight response
+/// 2. Public paths → pass through
+/// 3. Extract token → 401 if missing
+/// 4. Validate token (placeholder) → 401 if invalid
+/// 5. Inject AuthContext → continue to handler
+pub async fn auth_middleware(
+    State(state): State<Arc<AuthState>>,
+    mut request: Request<Body>,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    // Handle CORS preflight
+    if request.method() == Method::OPTIONS {
+        return Ok(cors_preflight_response());
+    }
+
+    let path = request.uri().path().to_string();
+
+    // Check if this path requires authentication
+    if !state.requires_auth(&path) {
+        // Insert default auth context for public paths
+        request.extensions_mut().insert(AuthContext::default());
+        return Ok(next.run(request).await);
+    }
+
+    // Extract bearer token
+    let token = match extract_token(&request) {
+        Some(t) => t,
+        None => {
+            return Ok(unauthorized_response(
+                &state.config,
+                "invalid_request",
+                "Missing bearer token",
+            ));
+        }
+    };
+
+    // TODO: Validate token using gopher-auth FFI
+    // For now, create a mock auth context if a token is present
+    // In the real implementation, this would call:
+    // - state.auth_client.validate_token(&token, clock_skew)
+    // - state.auth_client.extract_payload(&token)
+
+    // Placeholder: accept any token and extract mock claims
+    // This will be replaced with actual validation in the FFI implementation
+    let auth_context = if state.config.auth_disabled {
+        // Auth disabled: grant full access
+        AuthContext {
+            user_id: "anonymous".to_string(),
+            scopes: state.config.allowed_scopes.clone(),
+            audience: state.config.server_url.clone(),
+            token_expiry: u64::MAX,
+            authenticated: false,
+        }
+    } else {
+        // Placeholder for real token validation
+        // In production, this would parse and validate the JWT
+        AuthContext {
+            user_id: "user".to_string(),
+            scopes: state.config.allowed_scopes.clone(),
+            audience: state.config.server_url.clone(),
+            token_expiry: chrono::Utc::now().timestamp() as u64 + 3600,
+            authenticated: true,
+        }
+    };
+
+    // Insert auth context into request extensions
+    request.extensions_mut().insert(auth_context);
+
+    // Continue to the next handler
+    Ok(next.run(request).await)
 }
 
 #[cfg(test)]
@@ -317,5 +454,73 @@ mod tests {
             .unwrap();
 
         assert_eq!(extract_token(&request), None);
+    }
+
+    #[test]
+    fn test_cors_preflight_response_status() {
+        let response = cors_preflight_response();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    }
+
+    #[test]
+    fn test_cors_preflight_response_headers() {
+        let response = cors_preflight_response();
+        let headers = response.headers();
+
+        assert!(headers.get("Access-Control-Allow-Origin").is_some());
+        assert!(headers.get("Access-Control-Allow-Methods").is_some());
+        assert!(headers.get("Access-Control-Allow-Headers").is_some());
+        assert!(headers.get("Access-Control-Expose-Headers").is_some());
+        assert!(headers.get("Access-Control-Max-Age").is_some());
+    }
+
+    #[test]
+    fn test_unauthorized_response_status() {
+        let config = AuthServerConfig {
+            server_url: "http://localhost:3001".to_string(),
+            allowed_scopes: "openid mcp:read".to_string(),
+            ..Default::default()
+        };
+
+        let response = unauthorized_response(&config, "invalid_token", "Token expired");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn test_unauthorized_response_www_authenticate() {
+        let config = AuthServerConfig {
+            server_url: "http://localhost:3001".to_string(),
+            allowed_scopes: "openid mcp:read".to_string(),
+            ..Default::default()
+        };
+
+        let response = unauthorized_response(&config, "invalid_token", "Token expired");
+        let www_auth = response.headers().get("WWW-Authenticate").unwrap().to_str().unwrap();
+
+        assert!(www_auth.contains("Bearer"));
+        assert!(www_auth.contains("realm="));
+        assert!(www_auth.contains("resource_metadata="));
+        assert!(www_auth.contains("error=\"invalid_token\""));
+        assert!(www_auth.contains("error_description=\"Token expired\""));
+    }
+
+    #[test]
+    fn test_unauthorized_response_cors_headers() {
+        let config = AuthServerConfig::default();
+        let response = unauthorized_response(&config, "invalid_request", "Missing token");
+
+        assert!(response.headers().get("Access-Control-Allow-Origin").is_some());
+        assert!(response.headers().get("Access-Control-Expose-Headers").is_some());
+    }
+
+    #[test]
+    fn test_unauthorized_response_content_type() {
+        let config = AuthServerConfig::default();
+        let response = unauthorized_response(&config, "invalid_request", "Missing token");
+
+        assert_eq!(
+            response.headers().get("Content-Type").unwrap(),
+            "application/json"
+        );
     }
 }
