@@ -204,6 +204,63 @@ impl AuthServerConfig {
             auth_disabled,
         })
     }
+
+    /// Validate configuration.
+    ///
+    /// When authentication is enabled, validates that required fields
+    /// are present:
+    /// - `client_id` is not empty
+    /// - `client_secret` is not empty
+    /// - `jwks_uri` is not empty
+    ///
+    /// Validation is skipped when `auth_disabled` is true.
+    pub fn validate(&self) -> Result<(), AppError> {
+        // Skip validation when auth is disabled
+        if self.auth_disabled {
+            return Ok(());
+        }
+
+        if self.client_id.is_empty() {
+            return Err(AppError::Config(
+                "client_id is required when authentication is enabled".to_string(),
+            ));
+        }
+
+        if self.client_secret.is_empty() {
+            return Err(AppError::Config(
+                "client_secret is required when authentication is enabled".to_string(),
+            ));
+        }
+
+        if self.jwks_uri.is_empty() {
+            return Err(AppError::Config(
+                "jwks_uri is required when authentication is enabled (provide jwks_uri or auth_server_url)".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Load configuration from an INI-style file.
+    ///
+    /// Reads the file, parses it, builds the config, and validates it.
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, AppError> {
+        let path = path.as_ref();
+
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            AppError::Config(format!(
+                "Failed to read config file '{}': {}",
+                path.display(),
+                e
+            ))
+        })?;
+
+        let map = parse_config_file(&content);
+        let config = Self::build_from_map(map)?;
+        config.validate()?;
+
+        Ok(config)
+    }
 }
 
 /// Parse INI-style configuration file content.
@@ -431,5 +488,139 @@ mod tests {
         map.insert("jwks_auto_refresh".to_string(), "true".to_string());
         let config = AuthServerConfig::build_from_map(map).unwrap();
         assert!(config.jwks_auto_refresh);
+    }
+
+    #[test]
+    fn test_validate_passes_with_valid_config() {
+        let mut map = HashMap::new();
+        map.insert("client_id".to_string(), "my-client".to_string());
+        map.insert("client_secret".to_string(), "secret".to_string());
+        map.insert(
+            "auth_server_url".to_string(),
+            "https://auth.example.com".to_string(),
+        );
+
+        let config = AuthServerConfig::build_from_map(map).unwrap();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_fails_missing_client_id() {
+        let mut map = HashMap::new();
+        map.insert("client_secret".to_string(), "secret".to_string());
+        map.insert("jwks_uri".to_string(), "https://example.com/jwks".to_string());
+
+        let config = AuthServerConfig::build_from_map(map).unwrap();
+        let result = config.validate();
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("client_id"));
+    }
+
+    #[test]
+    fn test_validate_fails_missing_client_secret() {
+        let mut map = HashMap::new();
+        map.insert("client_id".to_string(), "my-client".to_string());
+        map.insert("jwks_uri".to_string(), "https://example.com/jwks".to_string());
+
+        let config = AuthServerConfig::build_from_map(map).unwrap();
+        let result = config.validate();
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("client_secret"));
+    }
+
+    #[test]
+    fn test_validate_fails_missing_jwks_uri() {
+        let mut map = HashMap::new();
+        map.insert("client_id".to_string(), "my-client".to_string());
+        map.insert("client_secret".to_string(), "secret".to_string());
+
+        let config = AuthServerConfig::build_from_map(map).unwrap();
+        let result = config.validate();
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("jwks_uri"));
+    }
+
+    #[test]
+    fn test_validate_skipped_when_auth_disabled() {
+        // Empty config should fail validation normally
+        let config = AuthServerConfig::default();
+        assert!(config.validate().is_err());
+
+        // But should pass when auth is disabled
+        let config = AuthServerConfig::default_disabled();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_from_file_success() {
+        use std::io::Write;
+
+        // Create a temporary config file
+        let dir = std::env::temp_dir();
+        let path = dir.join("test_config.ini");
+
+        let content = r#"
+# Test configuration
+host=127.0.0.1
+port=8080
+client_id=test-client
+client_secret=test-secret
+auth_server_url=https://auth.example.com/realms/test
+"#;
+
+        let mut file = std::fs::File::create(&path).unwrap();
+        file.write_all(content.as_bytes()).unwrap();
+
+        let config = AuthServerConfig::from_file(&path).unwrap();
+
+        assert_eq!(config.host, "127.0.0.1");
+        assert_eq!(config.port, 8080);
+        assert_eq!(config.client_id, "test-client");
+        assert_eq!(config.client_secret, "test-secret");
+        assert_eq!(
+            config.jwks_uri,
+            "https://auth.example.com/realms/test/protocol/openid-connect/certs"
+        );
+
+        // Cleanup
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_from_file_missing_file() {
+        let result = AuthServerConfig::from_file("/nonexistent/path/config.ini");
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Failed to read"));
+    }
+
+    #[test]
+    fn test_from_file_validation_error() {
+        use std::io::Write;
+
+        // Create a config file missing required fields
+        let dir = std::env::temp_dir();
+        let path = dir.join("test_invalid_config.ini");
+
+        let content = r#"
+host=127.0.0.1
+port=8080
+# Missing client_id, client_secret, auth_server_url
+"#;
+
+        let mut file = std::fs::File::create(&path).unwrap();
+        file.write_all(content.as_bytes()).unwrap();
+
+        let result = AuthServerConfig::from_file(&path);
+
+        assert!(result.is_err());
+        // Should fail validation
+        assert!(result.unwrap_err().to_string().contains("required"));
+
+        // Cleanup
+        std::fs::remove_file(&path).ok();
     }
 }
