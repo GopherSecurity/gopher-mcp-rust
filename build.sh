@@ -183,7 +183,7 @@ echo -e "${YELLOW}  Compiling Rust SDK...${NC}"
 LIBRARY_PATH="${NATIVE_LIB_DIR}" \
 LD_LIBRARY_PATH="${NATIVE_LIB_DIR}" \
 DYLD_LIBRARY_PATH="${NATIVE_LIB_DIR}" \
-cargo build --release
+cargo build --release --features auth
 
 echo -e "${GREEN}✓ Rust SDK built successfully${NC}"
 echo ""
@@ -193,7 +193,7 @@ echo -e "${YELLOW}Step 5: Running tests...${NC}"
 LIBRARY_PATH="${NATIVE_LIB_DIR}" \
 LD_LIBRARY_PATH="${NATIVE_LIB_DIR}" \
 DYLD_LIBRARY_PATH="${NATIVE_LIB_DIR}" \
-cargo test && echo -e "${GREEN}✓ Tests passed${NC}" || echo -e "${YELLOW}⚠ Some tests may have failed (native library required)${NC}"
+cargo test --features auth && echo -e "${GREEN}✓ Tests passed${NC}" || echo -e "${YELLOW}⚠ Some tests may have failed (native library required)${NC}"
 
 echo ""
 echo -e "${GREEN}======================================${NC}"
@@ -204,7 +204,7 @@ echo -e "Native libraries: ${YELLOW}${NATIVE_LIB_DIR}${NC}"
 echo -e "Native headers:   ${YELLOW}${NATIVE_INCLUDE_DIR}${NC}"
 echo ""
 echo -e "To run tests manually:"
-echo -e "  ${YELLOW}DYLD_LIBRARY_PATH=\$(pwd)/native/lib cargo test${NC}"
+echo -e "  ${YELLOW}DYLD_LIBRARY_PATH=\$(pwd)/native/lib cargo test --features auth${NC}"
 echo ""
 echo -e "To build:"
-echo -e "  ${YELLOW}cargo build --release${NC}"
+echo -e "  ${YELLOW}cargo build --release --features auth${NC}"
