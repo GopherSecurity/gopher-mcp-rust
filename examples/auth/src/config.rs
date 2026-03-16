@@ -107,10 +107,11 @@ impl AuthServerConfig {
             .get("port")
             .and_then(|s| s.parse().ok())
             .unwrap_or(defaults.port);
-        let server_url = map
-            .get("server_url")
-            .cloned()
-            .unwrap_or_else(|| format!("http://{}:{}", host, port));
+        let server_url = map.get("server_url").cloned().unwrap_or_else(|| {
+            // Use localhost for display when binding to all interfaces
+            let display_host = if host == "0.0.0.0" { "localhost" } else { &host };
+            format!("http://{}:{}", display_host, port)
+        });
 
         // Get auth server URL for endpoint derivation
         let auth_server_url = map
@@ -385,7 +386,8 @@ mod tests {
 
         assert_eq!(config.host, "0.0.0.0");
         assert_eq!(config.port, 3001);
-        assert_eq!(config.server_url, "http://0.0.0.0:3001");
+        // server_url uses localhost for display when host is 0.0.0.0
+        assert_eq!(config.server_url, "http://localhost:3001");
         assert!(!config.auth_disabled);
     }
 
