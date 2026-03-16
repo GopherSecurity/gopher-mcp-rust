@@ -3,3 +3,4 @@
 //! Contains handlers for health, OAuth discovery, and MCP endpoints.
 
 pub mod health;
+pub mod oauth_endpoints;
