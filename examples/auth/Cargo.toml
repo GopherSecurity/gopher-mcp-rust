@@ -35,3 +35,4 @@ chrono = { version = "0.4", features = ["serde"] }
 url = "2"
 
 [dev-dependencies]
+http-body-util = "0.1"
