@@ -6,9 +6,15 @@
 //! - OpenID Connect Discovery 1.0
 //! - RFC 7591: Dynamic Client Registration
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::{extract::State, response::IntoResponse, Json};
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    response::{IntoResponse, Redirect, Response},
+    Json,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::config::AuthServerConfig;
@@ -306,6 +312,102 @@ pub async fn openid_configuration(
     };
 
     with_cors_headers(Json(oidc_config))
+}
+
+/// Query parameters for OAuth authorize endpoint.
+#[derive(Debug, Deserialize)]
+pub struct AuthorizeParams {
+    /// Capture all query parameters to forward.
+    #[serde(flatten)]
+    pub params: HashMap<String, String>,
+}
+
+/// OAuth authorize redirect endpoint handler.
+///
+/// Redirects to the configured authorization server with all query parameters.
+/// Serves `/oauth/authorize`.
+pub async fn oauth_authorize(
+    State(config): State<Arc<AuthServerConfig>>,
+    Query(params): Query<AuthorizeParams>,
+) -> Response {
+    // Determine authorization endpoint
+    let auth_endpoint = if !config.oauth_authorize_url.is_empty() {
+        &config.oauth_authorize_url
+    } else if !config.auth_server_url.is_empty() {
+        // Will construct below
+        &format!("{}/protocol/openid-connect/auth", config.auth_server_url)
+    } else {
+        // Fallback error - no authorization endpoint configured
+        return with_cors_headers((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": "server_error",
+                "error_description": "No authorization endpoint configured"
+            })),
+        ));
+    };
+
+    // Parse and build redirect URL
+    let mut url = match url::Url::parse(auth_endpoint) {
+        Ok(u) => u,
+        Err(_) => {
+            return with_cors_headers((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "server_error",
+                    "error_description": "Failed to parse authorization URL"
+                })),
+            ));
+        }
+    };
+
+    // Forward all query parameters
+    for (key, value) in &params.params {
+        url.query_pairs_mut().append_pair(key, value);
+    }
+
+    // Return redirect with CORS headers
+    with_cors_headers(Redirect::to(url.as_str()))
+}
+
+/// OAuth dynamic client registration endpoint handler.
+///
+/// Returns client credentials (stateless - uses configured values).
+/// Serves `POST /oauth/register`.
+pub async fn oauth_register(
+    State(config): State<Arc<AuthServerConfig>>,
+    Json(body): Json<ClientRegistrationRequest>,
+) -> Response {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    // Determine auth method based on whether secret is configured
+    let (client_secret, token_endpoint_auth_method) = if config.client_secret.is_empty() {
+        (None, "none".to_string())
+    } else {
+        (
+            Some(config.client_secret.clone()),
+            "client_secret_post".to_string(),
+        )
+    };
+
+    let response = ClientRegistrationResponse {
+        client_id: config.client_id.clone(),
+        client_secret,
+        client_id_issued_at: now,
+        client_secret_expires_at: 0, // Never expires
+        redirect_uris: body.redirect_uris,
+        grant_types: vec![
+            "authorization_code".to_string(),
+            "refresh_token".to_string(),
+        ],
+        response_types: vec!["code".to_string()],
+        token_endpoint_auth_method,
+    };
+
+    with_cors_headers((StatusCode::CREATED, Json(response)))
 }
 
 #[cfg(test)]
