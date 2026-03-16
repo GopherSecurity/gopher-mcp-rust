@@ -90,6 +90,38 @@ impl AuthServerConfig {
     }
 }
 
+/// Parse INI-style configuration file content.
+///
+/// Handles:
+/// - Comments (lines starting with `#`)
+/// - Empty lines
+/// - Values containing `=` characters (splits only on first `=`)
+/// - Whitespace trimming for keys and values
+pub fn parse_config_file(content: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        // Skip empty lines and comments
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        // Split on first '=' only to handle values containing '='
+        if let Some(pos) = trimmed.find('=') {
+            let key = trimmed[..pos].trim();
+            let value = trimmed[pos + 1..].trim();
+
+            if !key.is_empty() {
+                map.insert(key.to_string(), value.to_string());
+            }
+        }
+    }
+
+    map
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,5 +146,62 @@ mod tests {
         assert!(config.auth_disabled);
         assert_eq!(config.host, "0.0.0.0");
         assert_eq!(config.port, 3001);
+    }
+
+    #[test]
+    fn test_parse_basic_key_value() {
+        let content = "host=localhost\nport=3001";
+        let map = parse_config_file(content);
+
+        assert_eq!(map.get("host"), Some(&"localhost".to_string()));
+        assert_eq!(map.get("port"), Some(&"3001".to_string()));
+    }
+
+    #[test]
+    fn test_parse_comments_skipped() {
+        let content = "# This is a comment\nhost=localhost\n# Another comment\nport=3001";
+        let map = parse_config_file(content);
+
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get("host"), Some(&"localhost".to_string()));
+        assert_eq!(map.get("port"), Some(&"3001".to_string()));
+    }
+
+    #[test]
+    fn test_parse_empty_lines_skipped() {
+        let content = "host=localhost\n\n\nport=3001\n\n";
+        let map = parse_config_file(content);
+
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get("host"), Some(&"localhost".to_string()));
+        assert_eq!(map.get("port"), Some(&"3001".to_string()));
+    }
+
+    #[test]
+    fn test_parse_values_with_equals() {
+        let content = "auth_url=https://auth.example.com?param=value&other=123";
+        let map = parse_config_file(content);
+
+        assert_eq!(
+            map.get("auth_url"),
+            Some(&"https://auth.example.com?param=value&other=123".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_whitespace_trimmed() {
+        let content = "  host  =  localhost  \n  port=  3001";
+        let map = parse_config_file(content);
+
+        assert_eq!(map.get("host"), Some(&"localhost".to_string()));
+        assert_eq!(map.get("port"), Some(&"3001".to_string()));
+    }
+
+    #[test]
+    fn test_parse_empty_value() {
+        let content = "empty_key=";
+        let map = parse_config_file(content);
+
+        assert_eq!(map.get("empty_key"), Some(&"".to_string()));
     }
 }
