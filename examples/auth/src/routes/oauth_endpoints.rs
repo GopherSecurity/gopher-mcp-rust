@@ -6,7 +6,13 @@
 //! - OpenID Connect Discovery 1.0
 //! - RFC 7591: Dynamic Client Registration
 
+use std::sync::Arc;
+
+use axum::{extract::State, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
+
+use crate::config::AuthServerConfig;
+use crate::cors::with_cors_headers;
 
 /// RFC 9728: Protected Resource Metadata.
 ///
@@ -110,6 +116,40 @@ pub struct ClientRegistrationRequest {
     /// Requested redirect URIs.
     #[serde(default)]
     pub redirect_uris: Vec<String>,
+}
+
+/// Parse scopes from a space-separated string.
+fn parse_scopes(scopes: &str) -> Vec<String> {
+    scopes
+        .split_whitespace()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// Protected resource metadata endpoint handler.
+///
+/// Returns RFC 9728 compliant metadata describing this MCP resource.
+/// Serves both `/.well-known/oauth-protected-resource` and
+/// `/.well-known/oauth-protected-resource/mcp`.
+pub async fn protected_resource_metadata(
+    State(config): State<Arc<AuthServerConfig>>,
+) -> impl IntoResponse {
+    let scopes = parse_scopes(&config.allowed_scopes);
+
+    let metadata = ProtectedResourceMetadata {
+        resource: format!("{}/mcp", config.server_url),
+        authorization_servers: vec![config.server_url.clone()],
+        scopes_supported: if scopes.is_empty() {
+            None
+        } else {
+            Some(scopes)
+        },
+        bearer_methods_supported: Some(vec!["header".to_string(), "query".to_string()]),
+        resource_documentation: Some(format!("{}/docs", config.server_url)),
+    };
+
+    with_cors_headers(Json(metadata))
 }
 
 #[cfg(test)]
