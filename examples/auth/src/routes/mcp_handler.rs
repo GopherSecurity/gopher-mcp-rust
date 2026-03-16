@@ -16,6 +16,9 @@ use serde_json::{json, Value};
 
 use crate::cors::{options_handler as cors_options, with_cors_headers};
 
+// Re-export AuthContext for backward compatibility with tools
+pub use crate::middleware::AuthContext;
+
 /// JSON-RPC 2.0 error codes.
 pub mod error_codes {
     /// Parse error - Invalid JSON was received.
@@ -193,30 +196,6 @@ impl ToolContent {
             data: Some(data.into()),
             mime_type: Some(mime_type.into()),
         }
-    }
-}
-
-/// Authentication context from JWT token validation.
-///
-/// Contains user information extracted from a validated token.
-#[derive(Debug, Clone, Default)]
-pub struct AuthContext {
-    /// User identifier from token subject.
-    pub user_id: String,
-    /// Space-separated list of scopes.
-    pub scopes: String,
-    /// Token audience.
-    pub audience: String,
-    /// Token expiration timestamp (unix seconds).
-    pub token_expiry: u64,
-    /// Whether the user is authenticated.
-    pub authenticated: bool,
-}
-
-impl AuthContext {
-    /// Check if a specific scope is present.
-    pub fn has_scope(&self, scope: &str) -> bool {
-        self.scopes.split_whitespace().any(|s| s == scope)
     }
 }
 
