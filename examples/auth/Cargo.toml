@@ -21,8 +21,8 @@ serde_json = "1"
 # HTTP types
 http = "1"
 
-# FFI bindings to gopher-auth
-libloading = "0.8"
+# Gopher Orch SDK with auth FFI
+gopher-orch = { path = "../..", features = ["auth"] }
 
 # Logging
 tracing = "0.1"

@@ -11,6 +11,9 @@ use axum::{
 use serde::Serialize;
 use thiserror::Error;
 
+// Re-export gopher_orch error for convenience
+pub use gopher_orch::Error as GopherOrchError;
+
 /// Application error type.
 #[derive(Error, Debug)]
 pub enum AppError {
@@ -33,6 +36,16 @@ pub enum AppError {
     /// Internal server error.
     #[error("Internal error: {0}")]
     Internal(String),
+}
+
+impl From<GopherOrchError> for AppError {
+    fn from(err: GopherOrchError) -> Self {
+        match err {
+            GopherOrchError::Auth(msg) => AppError::Auth(msg),
+            GopherOrchError::Library(msg) => AppError::Ffi(msg),
+            other => AppError::Ffi(other.to_string()),
+        }
+    }
 }
 
 /// JSON error response body.

@@ -1,8 +1,8 @@
 //! FFI bindings module.
 //!
-//! Provides bindings to the gopher-auth native library.
+//! Re-exports gopher-auth types from the gopher-orch library.
 
-pub mod auth;
+mod auth;
 
-// Re-export commonly used types
+// Re-export types from local wrapper
 pub use auth::{GopherAuthClient, TokenPayload, ValidationResult};

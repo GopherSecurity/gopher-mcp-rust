@@ -29,6 +29,10 @@ pub enum Error {
 
     /// Agent has been disposed.
     Disposed,
+
+    /// Authentication error (gopher-auth).
+    #[cfg(feature = "auth")]
+    Auth(String),
 }
 
 impl fmt::Display for Error {
@@ -41,6 +45,8 @@ impl fmt::Display for Error {
             Error::Timeout(msg) => write!(f, "Timeout error: {}", msg),
             Error::Config(msg) => write!(f, "Configuration error: {}", msg),
             Error::Disposed => write!(f, "Agent has been disposed"),
+            #[cfg(feature = "auth")]
+            Error::Auth(msg) => write!(f, "Auth error: {}", msg),
         }
     }
 }
@@ -71,5 +77,11 @@ impl Error {
     /// Create a new config error.
     pub fn config<S: Into<String>>(msg: S) -> Self {
         Error::Config(msg.into())
+    }
+
+    /// Create a new auth error.
+    #[cfg(feature = "auth")]
+    pub fn auth<S: Into<String>>(msg: S) -> Self {
+        Error::Auth(msg.into())
     }
 }
