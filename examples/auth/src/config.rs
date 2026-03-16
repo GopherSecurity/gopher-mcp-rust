@@ -88,6 +88,122 @@ impl AuthServerConfig {
             ..Default::default()
         }
     }
+
+    /// Build configuration from a parsed key-value map.
+    ///
+    /// When `auth_server_url` is provided, missing OAuth endpoints are
+    /// automatically derived using standard OpenID Connect paths:
+    /// - `jwks_uri` → `{auth_server_url}/protocol/openid-connect/certs`
+    /// - `issuer` → `{auth_server_url}`
+    /// - `oauth_authorize_url` → `{auth_server_url}/protocol/openid-connect/auth`
+    /// - `oauth_token_url` → `{auth_server_url}/protocol/openid-connect/token`
+    /// - `token_endpoint` → `{auth_server_url}/protocol/openid-connect/token`
+    pub fn build_from_map(map: HashMap<String, String>) -> Result<Self, AppError> {
+        let defaults = Self::default();
+
+        // Parse basic fields with defaults
+        let host = map.get("host").cloned().unwrap_or(defaults.host);
+        let port = map
+            .get("port")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(defaults.port);
+        let server_url = map
+            .get("server_url")
+            .cloned()
+            .unwrap_or_else(|| format!("http://{}:{}", host, port));
+
+        // Get auth server URL for endpoint derivation
+        let auth_server_url = map
+            .get("auth_server_url")
+            .cloned()
+            .unwrap_or_default();
+
+        // Derive endpoints from auth_server_url if not explicitly set
+        let jwks_uri = map.get("jwks_uri").cloned().unwrap_or_else(|| {
+            if auth_server_url.is_empty() {
+                String::new()
+            } else {
+                format!("{}/protocol/openid-connect/certs", auth_server_url)
+            }
+        });
+
+        let issuer = map.get("issuer").cloned().unwrap_or_else(|| {
+            auth_server_url.clone()
+        });
+
+        let oauth_authorize_url = map.get("oauth_authorize_url").cloned().unwrap_or_else(|| {
+            if auth_server_url.is_empty() {
+                String::new()
+            } else {
+                format!("{}/protocol/openid-connect/auth", auth_server_url)
+            }
+        });
+
+        let oauth_token_url = map.get("oauth_token_url").cloned().unwrap_or_else(|| {
+            if auth_server_url.is_empty() {
+                String::new()
+            } else {
+                format!("{}/protocol/openid-connect/token", auth_server_url)
+            }
+        });
+
+        let token_endpoint = map.get("token_endpoint").cloned().unwrap_or_else(|| {
+            if auth_server_url.is_empty() {
+                String::new()
+            } else {
+                format!("{}/protocol/openid-connect/token", auth_server_url)
+            }
+        });
+
+        // Parse other OAuth fields
+        let client_id = map.get("client_id").cloned().unwrap_or_default();
+        let client_secret = map.get("client_secret").cloned().unwrap_or_default();
+        let allowed_scopes = map
+            .get("allowed_scopes")
+            .cloned()
+            .unwrap_or(defaults.allowed_scopes);
+
+        // Parse cache settings
+        let jwks_cache_duration = map
+            .get("jwks_cache_duration")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(defaults.jwks_cache_duration);
+
+        let jwks_auto_refresh = map
+            .get("jwks_auto_refresh")
+            .map(|s| s == "true" || s == "1")
+            .unwrap_or(defaults.jwks_auto_refresh);
+
+        let request_timeout = map
+            .get("request_timeout")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(defaults.request_timeout);
+
+        // Parse auth disabled flag
+        let auth_disabled = map
+            .get("auth_disabled")
+            .map(|s| s == "true" || s == "1")
+            .unwrap_or(defaults.auth_disabled);
+
+        Ok(Self {
+            host,
+            port,
+            server_url,
+            auth_server_url,
+            jwks_uri,
+            issuer,
+            client_id,
+            client_secret,
+            token_endpoint,
+            oauth_authorize_url,
+            oauth_token_url,
+            allowed_scopes,
+            jwks_cache_duration,
+            jwks_auto_refresh,
+            request_timeout,
+            auth_disabled,
+        })
+    }
 }
 
 /// Parse INI-style configuration file content.
@@ -203,5 +319,117 @@ mod tests {
         let map = parse_config_file(content);
 
         assert_eq!(map.get("empty_key"), Some(&"".to_string()));
+    }
+
+    #[test]
+    fn test_build_from_map_defaults() {
+        let map = HashMap::new();
+        let config = AuthServerConfig::build_from_map(map).unwrap();
+
+        assert_eq!(config.host, "0.0.0.0");
+        assert_eq!(config.port, 3001);
+        assert_eq!(config.server_url, "http://0.0.0.0:3001");
+        assert!(!config.auth_disabled);
+    }
+
+    #[test]
+    fn test_build_from_map_custom_values() {
+        let mut map = HashMap::new();
+        map.insert("host".to_string(), "127.0.0.1".to_string());
+        map.insert("port".to_string(), "8080".to_string());
+        map.insert("client_id".to_string(), "my-client".to_string());
+        map.insert("auth_disabled".to_string(), "true".to_string());
+
+        let config = AuthServerConfig::build_from_map(map).unwrap();
+
+        assert_eq!(config.host, "127.0.0.1");
+        assert_eq!(config.port, 8080);
+        assert_eq!(config.server_url, "http://127.0.0.1:8080");
+        assert_eq!(config.client_id, "my-client");
+        assert!(config.auth_disabled);
+    }
+
+    #[test]
+    fn test_build_from_map_endpoint_derivation() {
+        let mut map = HashMap::new();
+        map.insert(
+            "auth_server_url".to_string(),
+            "https://auth.example.com/realms/test".to_string(),
+        );
+
+        let config = AuthServerConfig::build_from_map(map).unwrap();
+
+        assert_eq!(
+            config.jwks_uri,
+            "https://auth.example.com/realms/test/protocol/openid-connect/certs"
+        );
+        assert_eq!(
+            config.issuer,
+            "https://auth.example.com/realms/test"
+        );
+        assert_eq!(
+            config.oauth_authorize_url,
+            "https://auth.example.com/realms/test/protocol/openid-connect/auth"
+        );
+        assert_eq!(
+            config.oauth_token_url,
+            "https://auth.example.com/realms/test/protocol/openid-connect/token"
+        );
+        assert_eq!(
+            config.token_endpoint,
+            "https://auth.example.com/realms/test/protocol/openid-connect/token"
+        );
+    }
+
+    #[test]
+    fn test_build_from_map_explicit_endpoints_override() {
+        let mut map = HashMap::new();
+        map.insert(
+            "auth_server_url".to_string(),
+            "https://auth.example.com/realms/test".to_string(),
+        );
+        map.insert(
+            "jwks_uri".to_string(),
+            "https://custom.example.com/jwks".to_string(),
+        );
+
+        let config = AuthServerConfig::build_from_map(map).unwrap();
+
+        // Explicit value should override derived
+        assert_eq!(config.jwks_uri, "https://custom.example.com/jwks");
+        // Other endpoints still derived
+        assert_eq!(
+            config.oauth_authorize_url,
+            "https://auth.example.com/realms/test/protocol/openid-connect/auth"
+        );
+    }
+
+    #[test]
+    fn test_build_from_map_cache_settings() {
+        let mut map = HashMap::new();
+        map.insert("jwks_cache_duration".to_string(), "7200".to_string());
+        map.insert("jwks_auto_refresh".to_string(), "false".to_string());
+        map.insert("request_timeout".to_string(), "10000".to_string());
+
+        let config = AuthServerConfig::build_from_map(map).unwrap();
+
+        assert_eq!(config.jwks_cache_duration, 7200);
+        assert!(!config.jwks_auto_refresh);
+        assert_eq!(config.request_timeout, 10000);
+    }
+
+    #[test]
+    fn test_build_from_map_boolean_parsing() {
+        // Test "1" as true
+        let mut map = HashMap::new();
+        map.insert("auth_disabled".to_string(), "1".to_string());
+        let config = AuthServerConfig::build_from_map(map).unwrap();
+        assert!(config.auth_disabled);
+
+        // Test "true" as true
+        let mut map = HashMap::new();
+        map.insert("jwks_auto_refresh".to_string(), "true".to_string());
+        let config = AuthServerConfig::build_from_map(map).unwrap();
+        assert!(config.jwks_auto_refresh);
     }
 }
