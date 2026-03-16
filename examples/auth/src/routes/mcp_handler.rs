@@ -2,8 +2,11 @@
 //!
 //! Implements JSON-RPC 2.0 protocol for MCP tool execution.
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 /// JSON-RPC 2.0 error codes.
 pub mod error_codes {
@@ -182,6 +185,171 @@ impl ToolContent {
             data: Some(data.into()),
             mime_type: Some(mime_type.into()),
         }
+    }
+}
+
+/// Authentication context from JWT token validation.
+///
+/// Contains user information extracted from a validated token.
+#[derive(Debug, Clone, Default)]
+pub struct AuthContext {
+    /// User identifier from token subject.
+    pub user_id: String,
+    /// Space-separated list of scopes.
+    pub scopes: String,
+    /// Token audience.
+    pub audience: String,
+    /// Token expiration timestamp (unix seconds).
+    pub token_expiry: u64,
+    /// Whether the user is authenticated.
+    pub authenticated: bool,
+}
+
+impl AuthContext {
+    /// Check if a specific scope is present.
+    pub fn has_scope(&self, scope: &str) -> bool {
+        self.scopes.split_whitespace().any(|s| s == scope)
+    }
+}
+
+/// Tool handler function type.
+pub type ToolHandler = Arc<dyn Fn(Value, &AuthContext) -> ToolResult + Send + Sync>;
+
+/// Server information for MCP initialize response.
+#[derive(Debug, Serialize)]
+struct ServerInfo {
+    name: &'static str,
+    version: &'static str,
+}
+
+/// MCP Handler for JSON-RPC 2.0 requests.
+pub struct McpHandler {
+    /// Registered tools: name -> (spec, handler)
+    tools: HashMap<String, (ToolSpec, ToolHandler)>,
+    /// Server information
+    server_info: ServerInfo,
+}
+
+impl McpHandler {
+    /// Create a new MCP handler.
+    pub fn new() -> Self {
+        Self {
+            tools: HashMap::new(),
+            server_info: ServerInfo {
+                name: "rust-auth-mcp-server",
+                version: "1.0.0",
+            },
+        }
+    }
+
+    /// Handle a JSON-RPC request.
+    pub fn handle_request(&self, body: Value, auth_context: &AuthContext) -> JsonRpcResponse {
+        // Parse request
+        let request: JsonRpcRequest = match serde_json::from_value(body) {
+            Ok(r) => r,
+            Err(_) => {
+                return JsonRpcResponse::error(
+                    None,
+                    error_codes::INVALID_REQUEST,
+                    "Invalid request: expected JSON-RPC object",
+                );
+            }
+        };
+
+        // Validate jsonrpc version
+        if request.jsonrpc != "2.0" {
+            return JsonRpcResponse::error(
+                request.id,
+                error_codes::INVALID_REQUEST,
+                "Invalid request: jsonrpc must be \"2.0\"",
+            );
+        }
+
+        // Dispatch method
+        match request.method.as_str() {
+            "initialize" => self.handle_initialize(request.id),
+            "tools/list" => self.handle_tools_list(request.id),
+            "tools/call" => self.handle_tools_call(request.id, request.params, auth_context),
+            "ping" => self.handle_ping(request.id),
+            _ => JsonRpcResponse::error(
+                request.id,
+                error_codes::METHOD_NOT_FOUND,
+                format!("Method not found: {}", request.method),
+            ),
+        }
+    }
+
+    /// Handle initialize method.
+    fn handle_initialize(&self, id: Option<Value>) -> JsonRpcResponse {
+        JsonRpcResponse::success(
+            id,
+            json!({
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "tools": {}
+                },
+                "serverInfo": self.server_info
+            }),
+        )
+    }
+
+    /// Handle tools/list method.
+    fn handle_tools_list(&self, id: Option<Value>) -> JsonRpcResponse {
+        let tools: Vec<&ToolSpec> = self.tools.values().map(|(spec, _)| spec).collect();
+        JsonRpcResponse::success(id, json!({ "tools": tools }))
+    }
+
+    /// Handle tools/call method.
+    fn handle_tools_call(
+        &self,
+        id: Option<Value>,
+        params: Option<Value>,
+        auth_context: &AuthContext,
+    ) -> JsonRpcResponse {
+        let params = match params {
+            Some(p) => p,
+            None => {
+                return JsonRpcResponse::error(id, error_codes::INVALID_PARAMS, "Missing params");
+            }
+        };
+
+        let name = match params.get("name").and_then(|v| v.as_str()) {
+            Some(n) => n,
+            None => {
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::INVALID_PARAMS,
+                    "Invalid params: name must be a string",
+                );
+            }
+        };
+
+        let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
+
+        let (_, handler) = match self.tools.get(name) {
+            Some(t) => t,
+            None => {
+                return JsonRpcResponse::error(
+                    id,
+                    error_codes::METHOD_NOT_FOUND,
+                    format!("Tool not found: {}", name),
+                );
+            }
+        };
+
+        let result = handler(arguments, auth_context);
+        JsonRpcResponse::success(id, serde_json::to_value(result).unwrap_or(json!(null)))
+    }
+
+    /// Handle ping method.
+    fn handle_ping(&self, id: Option<Value>) -> JsonRpcResponse {
+        JsonRpcResponse::success(id, json!({}))
+    }
+}
+
+impl Default for McpHandler {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
