@@ -152,6 +152,70 @@ pub async fn protected_resource_metadata(
     with_cors_headers(Json(metadata))
 }
 
+/// Authorization server metadata endpoint handler.
+///
+/// Returns RFC 8414 compliant metadata describing the authorization server.
+/// Serves `/.well-known/oauth-authorization-server`.
+pub async fn authorization_server_metadata(
+    State(config): State<Arc<AuthServerConfig>>,
+) -> impl IntoResponse {
+    let scopes = parse_scopes(&config.allowed_scopes);
+
+    // Use issuer from config, or fall back to server_url
+    let issuer = if config.issuer.is_empty() {
+        config.server_url.clone()
+    } else {
+        config.issuer.clone()
+    };
+
+    // Use configured OAuth URLs or fall back to auth_server_url derived URLs
+    let authorization_endpoint = if !config.oauth_authorize_url.is_empty() {
+        config.oauth_authorize_url.clone()
+    } else if !config.auth_server_url.is_empty() {
+        format!("{}/protocol/openid-connect/auth", config.auth_server_url)
+    } else {
+        format!("{}/oauth/authorize", config.server_url)
+    };
+
+    let token_endpoint = if !config.oauth_token_url.is_empty() {
+        config.oauth_token_url.clone()
+    } else if !config.auth_server_url.is_empty() {
+        format!("{}/protocol/openid-connect/token", config.auth_server_url)
+    } else {
+        format!("{}/oauth/token", config.server_url)
+    };
+
+    let metadata = AuthorizationServerMetadata {
+        issuer,
+        authorization_endpoint,
+        token_endpoint,
+        jwks_uri: if config.jwks_uri.is_empty() {
+            None
+        } else {
+            Some(config.jwks_uri.clone())
+        },
+        registration_endpoint: Some(format!("{}/oauth/register", config.server_url)),
+        scopes_supported: if scopes.is_empty() {
+            None
+        } else {
+            Some(scopes)
+        },
+        response_types_supported: vec!["code".to_string()],
+        grant_types_supported: Some(vec![
+            "authorization_code".to_string(),
+            "refresh_token".to_string(),
+        ]),
+        token_endpoint_auth_methods_supported: Some(vec![
+            "client_secret_basic".to_string(),
+            "client_secret_post".to_string(),
+            "none".to_string(),
+        ]),
+        code_challenge_methods_supported: Some(vec!["S256".to_string()]),
+    };
+
+    with_cors_headers(Json(metadata))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
