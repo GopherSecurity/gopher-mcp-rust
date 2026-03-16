@@ -1,0 +1,30 @@
+[package]
+name = "gopher-orch"
+version = "0.1.0"
+edition = "2021"
+authors = ["GopherSecurity"]
+description = "Rust SDK for Gopher Orch - AI Agent orchestration framework"
+license = "MIT"
+repository = "https://github.com/GopherSecurity/gopher-mcp-rust"
+keywords = ["ai", "agent", "mcp", "llm", "orchestration"]
+categories = ["api-bindings", "development-tools"]
+
+[lib]
+name = "gopher_orch"
+path = "src/lib.rs"
+
+[[example]]
+name = "client_example_json"
+path = "examples/client_example_json.rs"
+
+[dependencies]
+libloading = "0.7"
+once_cell = "=1.17.0"
+
+[dev-dependencies]
+
+[build-dependencies]
+# None needed - we use runtime loading
+
+[features]
+default = []
