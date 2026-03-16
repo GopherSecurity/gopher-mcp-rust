@@ -21,6 +21,7 @@ use axum::{
     Router,
 };
 use tokio::net::TcpListener;
+use tokio::sync::watch;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::config::AuthServerConfig;
@@ -98,6 +99,49 @@ fn print_endpoints(config: &AuthServerConfig) {
     println!();
 }
 
+/// Wait for shutdown signal.
+///
+/// Handles SIGINT (Ctrl+C) and SIGTERM (on Unix) for graceful shutdown.
+async fn shutdown_signal(mut shutdown_rx: watch::Receiver<bool>) {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("Failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    let shutdown_watch = async {
+        // Wait for explicit shutdown signal
+        while !*shutdown_rx.borrow_and_update() {
+            if shutdown_rx.changed().await.is_err() {
+                break;
+            }
+        }
+    };
+
+    tokio::select! {
+        _ = ctrl_c => {
+            tracing::info!("Received Ctrl+C signal");
+        }
+        _ = terminate => {
+            tracing::info!("Received SIGTERM signal");
+        }
+        _ = shutdown_watch => {
+            tracing::info!("Received shutdown signal");
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     // Initialize tracing
@@ -133,7 +177,7 @@ async fn main() {
     } else {
         tracing::info!("Initializing auth library...");
         match GopherAuthClient::new(&config.jwks_uri, &config.issuer) {
-            Ok(mut client) => {
+            Ok(client) => {
                 // Set client options
                 if let Err(e) = client.set_option(
                     "cache_duration",
@@ -167,7 +211,7 @@ async fn main() {
     // Create shared state
     let config = Arc::new(config);
     let health_state = Arc::new(HealthState::new(Some("1.0.0".to_string())));
-    let auth_state = Arc::new(AuthState::new(auth_client, (*config).clone()));
+    let auth_state = Arc::new(AuthState::new(auth_client.clone(), (*config).clone()));
 
     // Create MCP handler and register tools
     let mut mcp = McpHandler::new();
@@ -241,11 +285,37 @@ async fn main() {
     println!("Press Ctrl+C to shutdown");
     println!();
 
-    // Start server
+    // Create shutdown channel
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
+    // Start server with graceful shutdown
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind address");
-    axum::serve(listener, app)
-        .await
-        .expect("Server error");
+    let server = axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal(shutdown_rx));
+
+    // Run server
+    if let Err(e) = server.await {
+        tracing::error!("Server error: {}", e);
+    }
+
+    // Shutdown sequence
+    println!();
+    println!("Shutting down...");
+    tracing::info!("Server shutdown initiated");
+
+    // Signal shutdown (in case it wasn't already signaled)
+    let _ = shutdown_tx.send(true);
+
+    // Cleanup auth client if present
+    if auth_client.is_some() {
+        tracing::info!("Cleaning up auth client...");
+        // The Arc will be dropped when all references are gone
+        // The Drop implementation on GopherAuthClient will call destroy()
+        println!("Auth client destroyed");
+    }
+
+    tracing::info!("Server shutdown complete");
+    println!("Goodbye!");
 }
 
 /// Generic OPTIONS handler for CORS preflight.
