@@ -216,6 +216,98 @@ pub async fn authorization_server_metadata(
     with_cors_headers(Json(metadata))
 }
 
+/// Merge base OIDC scopes with configured scopes, deduplicating.
+fn merge_oidc_scopes(configured_scopes: &[String]) -> Vec<String> {
+    let base_scopes = ["openid", "profile", "email"];
+    let mut scopes: Vec<String> = base_scopes.iter().map(|s| s.to_string()).collect();
+
+    for scope in configured_scopes {
+        if !scopes.contains(scope) {
+            scopes.push(scope.clone());
+        }
+    }
+
+    scopes
+}
+
+/// OpenID Connect discovery endpoint handler.
+///
+/// Returns OIDC Discovery 1.0 compliant configuration extending RFC 8414.
+/// Serves `/.well-known/openid-configuration`.
+pub async fn openid_configuration(
+    State(config): State<Arc<AuthServerConfig>>,
+) -> impl IntoResponse {
+    let configured_scopes = parse_scopes(&config.allowed_scopes);
+    let scopes = merge_oidc_scopes(&configured_scopes);
+
+    // Use issuer from config, or fall back to server_url
+    let issuer = if config.issuer.is_empty() {
+        config.server_url.clone()
+    } else {
+        config.issuer.clone()
+    };
+
+    // Use configured OAuth URLs or fall back to auth_server_url derived URLs
+    let authorization_endpoint = if !config.oauth_authorize_url.is_empty() {
+        config.oauth_authorize_url.clone()
+    } else if !config.auth_server_url.is_empty() {
+        format!("{}/protocol/openid-connect/auth", config.auth_server_url)
+    } else {
+        format!("{}/oauth/authorize", config.server_url)
+    };
+
+    let token_endpoint = if !config.oauth_token_url.is_empty() {
+        config.oauth_token_url.clone()
+    } else if !config.auth_server_url.is_empty() {
+        format!("{}/protocol/openid-connect/token", config.auth_server_url)
+    } else {
+        format!("{}/oauth/token", config.server_url)
+    };
+
+    // Userinfo endpoint (only if auth_server_url is configured)
+    let userinfo_endpoint = if !config.auth_server_url.is_empty() {
+        Some(format!(
+            "{}/protocol/openid-connect/userinfo",
+            config.auth_server_url
+        ))
+    } else {
+        None
+    };
+
+    let base = AuthorizationServerMetadata {
+        issuer,
+        authorization_endpoint,
+        token_endpoint,
+        jwks_uri: if config.jwks_uri.is_empty() {
+            None
+        } else {
+            Some(config.jwks_uri.clone())
+        },
+        registration_endpoint: Some(format!("{}/oauth/register", config.server_url)),
+        scopes_supported: Some(scopes),
+        response_types_supported: vec!["code".to_string()],
+        grant_types_supported: Some(vec![
+            "authorization_code".to_string(),
+            "refresh_token".to_string(),
+        ]),
+        token_endpoint_auth_methods_supported: Some(vec![
+            "client_secret_basic".to_string(),
+            "client_secret_post".to_string(),
+            "none".to_string(),
+        ]),
+        code_challenge_methods_supported: Some(vec!["S256".to_string()]),
+    };
+
+    let oidc_config = OpenIDConfiguration {
+        base,
+        userinfo_endpoint,
+        subject_types_supported: Some(vec!["public".to_string()]),
+        id_token_signing_alg_values_supported: Some(vec!["RS256".to_string()]),
+    };
+
+    with_cors_headers(Json(oidc_config))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
