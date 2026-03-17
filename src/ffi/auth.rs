@@ -72,8 +72,11 @@ pub struct TokenPayload {
 
 // FFI function type definitions
 type GopherAuthInitFn = unsafe extern "C" fn() -> c_int;
-type GopherAuthClientCreateFn =
-    unsafe extern "C" fn(jwks_uri: *const c_char, issuer: *const c_char, out: *mut *mut c_void) -> c_int;
+type GopherAuthClientCreateFn = unsafe extern "C" fn(
+    jwks_uri: *const c_char,
+    issuer: *const c_char,
+    out: *mut *mut c_void,
+) -> c_int;
 type GopherAuthClientDestroyFn = unsafe extern "C" fn(client: *mut c_void);
 type GopherAuthSetOptionFn =
     unsafe extern "C" fn(client: *mut c_void, key: *const c_char, value: *const c_char) -> c_int;
@@ -86,12 +89,9 @@ type GopherAuthValidateTokenFn = unsafe extern "C" fn(
 ) -> c_int;
 type GopherAuthExtractPayloadFn =
     unsafe extern "C" fn(client: *mut c_void, token: *const c_char, out: *mut *mut c_void) -> c_int;
-type GopherAuthPayloadGetSubjectFn =
-    unsafe extern "C" fn(payload: *mut c_void) -> *const c_char;
-type GopherAuthPayloadGetScopesFn =
-    unsafe extern "C" fn(payload: *mut c_void) -> *const c_char;
-type GopherAuthPayloadGetAudienceFn =
-    unsafe extern "C" fn(payload: *mut c_void) -> *const c_char;
+type GopherAuthPayloadGetSubjectFn = unsafe extern "C" fn(payload: *mut c_void) -> *const c_char;
+type GopherAuthPayloadGetScopesFn = unsafe extern "C" fn(payload: *mut c_void) -> *const c_char;
+type GopherAuthPayloadGetAudienceFn = unsafe extern "C" fn(payload: *mut c_void) -> *const c_char;
 type GopherAuthPayloadGetExpirationFn = unsafe extern "C" fn(payload: *mut c_void) -> u64;
 type GopherAuthPayloadDestroyFn = unsafe extern "C" fn(payload: *mut c_void);
 type GopherAuthFreeStringFn = unsafe extern "C" fn(s: *mut c_char);
@@ -155,15 +155,14 @@ impl GopherAuthClient {
         }
 
         // Create the client
-        let jwks_uri_c = CString::new(jwks_uri)
-            .map_err(|e| Error::auth(format!("Invalid jwks_uri: {}", e)))?;
-        let issuer_c = CString::new(issuer)
-            .map_err(|e| Error::auth(format!("Invalid issuer: {}", e)))?;
+        let jwks_uri_c =
+            CString::new(jwks_uri).map_err(|e| Error::auth(format!("Invalid jwks_uri: {}", e)))?;
+        let issuer_c =
+            CString::new(issuer).map_err(|e| Error::auth(format!("Invalid issuer: {}", e)))?;
 
         let handle = unsafe {
-            let create: Symbol<GopherAuthClientCreateFn> = library
-                .get(b"gopher_auth_client_create\0")
-                .map_err(|e| {
+            let create: Symbol<GopherAuthClientCreateFn> =
+                library.get(b"gopher_auth_client_create\0").map_err(|e| {
                     Error::auth(format!("Failed to load gopher_auth_client_create: {}", e))
                 })?;
 
@@ -254,18 +253,16 @@ impl GopherAuthClient {
         };
 
         unsafe {
-            let validate: Symbol<GopherAuthValidateTokenFn> = match self
-                .library
-                .get(b"gopher_auth_validate_token\0")
-            {
-                Ok(f) => f,
-                Err(e) => {
-                    return ValidationResult::failure(
-                        -1,
-                        format!("Failed to load validate function: {}", e),
-                    )
-                }
-            };
+            let validate: Symbol<GopherAuthValidateTokenFn> =
+                match self.library.get(b"gopher_auth_validate_token\0") {
+                    Ok(f) => f,
+                    Err(e) => {
+                        return ValidationResult::failure(
+                            -1,
+                            format!("Failed to load validate function: {}", e),
+                        )
+                    }
+                };
 
             let mut valid: c_int = 0;
             let mut error: *mut c_char = ptr::null_mut();
@@ -322,8 +319,8 @@ impl GopherAuthClient {
     /// println!("Scopes: {}", payload.scopes);
     /// ```
     pub fn extract_payload(&self, token: &str) -> Result<TokenPayload, Error> {
-        let token_c = CString::new(token)
-            .map_err(|e| Error::auth(format!("Invalid token string: {}", e)))?;
+        let token_c =
+            CString::new(token).map_err(|e| Error::auth(format!("Invalid token string: {}", e)))?;
 
         unsafe {
             let extract: Symbol<GopherAuthExtractPayloadFn> = self
@@ -344,7 +341,8 @@ impl GopherAuthClient {
             // Extract fields from payload
             let subject = self.get_payload_string(payload, b"gopher_auth_payload_get_subject\0")?;
             let scopes = self.get_payload_string(payload, b"gopher_auth_payload_get_scopes\0")?;
-            let audience = self.get_payload_string(payload, b"gopher_auth_payload_get_audience\0")?;
+            let audience =
+                self.get_payload_string(payload, b"gopher_auth_payload_get_audience\0")?;
             let expiration = self.get_payload_expiration(payload)?;
 
             // Destroy the payload
@@ -360,7 +358,11 @@ impl GopherAuthClient {
     }
 
     /// Get a string field from a payload.
-    unsafe fn get_payload_string(&self, payload: *mut c_void, fn_name: &[u8]) -> Result<String, Error> {
+    unsafe fn get_payload_string(
+        &self,
+        payload: *mut c_void,
+        fn_name: &[u8],
+    ) -> Result<String, Error> {
         let get_fn: Symbol<GopherAuthPayloadGetSubjectFn> = self
             .library
             .get(fn_name)
@@ -421,10 +423,10 @@ impl GopherAuthClient {
     /// - `auto_refresh` - Enable automatic JWKS refresh ("true"/"false")
     /// - `request_timeout` - HTTP request timeout in seconds
     pub fn set_option(&self, key: &str, value: &str) -> Result<(), Error> {
-        let key_c = CString::new(key)
-            .map_err(|e| Error::auth(format!("Invalid option key: {}", e)))?;
-        let value_c = CString::new(value)
-            .map_err(|e| Error::auth(format!("Invalid option value: {}", e)))?;
+        let key_c =
+            CString::new(key).map_err(|e| Error::auth(format!("Invalid option key: {}", e)))?;
+        let value_c =
+            CString::new(value).map_err(|e| Error::auth(format!("Invalid option value: {}", e)))?;
 
         unsafe {
             let set_option: Symbol<GopherAuthSetOptionFn> = self
@@ -478,7 +480,8 @@ impl GopherAuthClient {
                     // If /dev/null doesn't work, try a path that definitely exists
                     #[cfg(target_os = "macos")]
                     {
-                        Library::new("/usr/lib/libSystem.B.dylib").expect("Failed to load system library for test dummy")
+                        Library::new("/usr/lib/libSystem.B.dylib")
+                            .expect("Failed to load system library for test dummy")
                     }
                     #[cfg(target_os = "linux")]
                     {
@@ -488,7 +491,8 @@ impl GopherAuthClient {
                     }
                     #[cfg(target_os = "windows")]
                     {
-                        Library::new("kernel32.dll").expect("Failed to load system library for test dummy")
+                        Library::new("kernel32.dll")
+                            .expect("Failed to load system library for test dummy")
                     }
                 })
             }),
@@ -572,7 +576,10 @@ mod tests {
         // This may fail if the library is not installed
         // That's expected in CI environments without the native library
         if let Err(e) = result {
-            println!("Client creation failed (expected without native lib): {}", e);
+            println!(
+                "Client creation failed (expected without native lib): {}",
+                e
+            );
         }
     }
 
