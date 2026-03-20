@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-03-20
+
 ### Added
 - Initial release of gopher-mcp-rust SDK
 - Rust bindings for gopher-orch native library via FFI
@@ -21,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `default` - Core functionality without auth
 - `auth` - OAuth 2.0 token validation via native library
 
+
 ---
 
-[Unreleased]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/HEAD
+[Unreleased]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/GopherSecurity/gopher-mcp-rust/releases/tag/v0.1.2
