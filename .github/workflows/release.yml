@@ -39,10 +39,23 @@ jobs:
           # Remove 'v' prefix for version number
           VERSION="${VERSION_TAG#v}"
 
+          # Extract base version (X.Y.Z) for gopher-orch download
+          # Handles both X.Y.Z and X.Y.Z.E formats
+          if echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+            # Extended version X.Y.Z.E -> base is X.Y.Z
+            BASE_VERSION=$(echo "$VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+$/\1/')
+          else
+            # Standard version X.Y.Z
+            BASE_VERSION="$VERSION"
+          fi
+
           echo "version_tag=${VERSION_TAG}" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "base_version=${BASE_VERSION}" >> $GITHUB_OUTPUT
+          echo "base_version_tag=v${BASE_VERSION}" >> $GITHUB_OUTPUT
           echo "Version Tag: ${VERSION_TAG}"
           echo "Version: ${VERSION}"
+          echo "Base Version: ${BASE_VERSION} (for gopher-orch download)"
 
       - name: Check if release already exists
         id: check_release
@@ -62,19 +75,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GOPHER_ORCH_TOKEN }}
         run: |
-          echo "Downloading native binaries for ${{ steps.version.outputs.version_tag }}..."
+          # Use base version for gopher-orch (X.Y.Z even if SDK is X.Y.Z.E)
+          ORCH_TAG="${{ steps.version.outputs.base_version_tag }}"
+          echo "Downloading native binaries from gopher-orch ${ORCH_TAG}..."
 
           mkdir -p downloads
 
           # Download all platform binaries from gopher-orch release
-          gh release download ${{ steps.version.outputs.version_tag }} \
+          gh release download "${ORCH_TAG}" \
             -R GopherSecurity/gopher-orch \
             -D downloads \
             -p "libgopher-orch-*.tar.gz" \
             -p "libgopher-orch-*.zip" || {
               echo "Warning: Could not download some binaries"
               echo "Available assets:"
-              gh release view ${{ steps.version.outputs.version_tag }} -R GopherSecurity/gopher-orch --json assets -q '.assets[].name'
+              gh release view "${ORCH_TAG}" -R GopherSecurity/gopher-orch --json assets -q '.assets[].name'
             }
 
           echo "Downloaded files:"
