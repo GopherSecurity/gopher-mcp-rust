@@ -250,8 +250,7 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     if: |
-      needs.release.outputs.release_created == 'true' &&
-      (vars.PUBLISH_CRATES == 'true' || contains(github.event.head_commit.message, '[publish]'))
+      vars.PUBLISH_CRATES == 'true' || contains(github.event.head_commit.message, '[publish]')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
