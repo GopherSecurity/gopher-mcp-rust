@@ -1,5 +1,5 @@
 [package]
-name = "gopher-orch"
+name = "gopher-mcp-rust"
 version = "0.1.2-6"
 edition = "2021"
 authors = ["GopherSecurity"]
@@ -10,7 +10,7 @@ keywords = ["ai", "agent", "mcp", "llm", "orchestration"]
 categories = ["api-bindings", "development-tools"]
 
 [lib]
-name = "gopher_orch"
+name = "gopher_mcp_rust"
 path = "src/lib.rs"
 
 [[example]]

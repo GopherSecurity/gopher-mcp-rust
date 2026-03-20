@@ -1,4 +1,4 @@
-# gopher-orch - Rust SDK
+# gopher-mcp-rust - Rust SDK
 
 Rust SDK for Gopher Orch - AI Agent orchestration framework with native C++ performance.
 
@@ -68,7 +68,7 @@ This SDK is ideal for:
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                  Rust SDK (gopher_orch)                     │
+│                  Rust SDK (gopher_mcp_rust)                 │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
 │  │ GopherAgent │  │ConfigBuilder│  │ Error Types         │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
@@ -99,14 +99,14 @@ This SDK is ideal for:
 
 ```toml
 [dependencies]
-gopher-orch = "0.1.0"
+gopher-mcp-rust ="0.1.0"
 ```
 
 ### Option 2: Git Dependency
 
 ```toml
 [dependencies]
-gopher-orch = { git = "https://github.com/GopherSecurity/gopher-mcp-rust.git" }
+gopher-mcp-rust ={ git = "https://github.com/GopherSecurity/gopher-mcp-rust.git" }
 ```
 
 ### Option 3: Build from Source
@@ -116,7 +116,7 @@ See [Building from Source](#building-from-source) section below.
 ## Quick Start
 
 ```rust
-use gopher_orch::{GopherAgent, ConfigBuilder};
+use gopher_mcp_rust::{GopherAgent, ConfigBuilder};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create an agent with API key (fetches server config from remote API)
@@ -268,10 +268,10 @@ The SDK searches for the native library in this order:
 The main struct for creating and running AI agents:
 
 ```rust
-use gopher_orch::{GopherAgent, ConfigBuilder, AgentResult};
+use gopher_mcp_rust::{GopherAgent, ConfigBuilder, AgentResult};
 
 // Initialize the library (called automatically on first create)
-gopher_orch::init()?;
+gopher_mcp_rust::init()?;
 
 // Create with API key (fetches server config from remote API)
 let config = ConfigBuilder::new()
@@ -317,7 +317,7 @@ let detailed: AgentResult = agent.run_detailed("Your prompt here");
 drop(agent);
 
 // Shutdown library
-gopher_orch::shutdown();
+gopher_mcp_rust::shutdown();
 ```
 
 ### ConfigBuilder
@@ -325,7 +325,7 @@ gopher_orch::shutdown();
 Builder for creating agent configurations:
 
 ```rust
-use gopher_orch::ConfigBuilder;
+use gopher_mcp_rust::ConfigBuilder;
 
 // With API key
 let config = ConfigBuilder::new()
@@ -351,7 +351,7 @@ assert!(!config.has_server_config());
 The SDK provides typed errors for different failure scenarios:
 
 ```rust
-use gopher_orch::{GopherAgent, ConfigBuilder, Error};
+use gopher_mcp_rust::{GopherAgent, ConfigBuilder, Error};
 
 fn main() {
     let config = ConfigBuilder::new()
@@ -383,7 +383,7 @@ fn main() {
 ### Basic Usage with API Key
 
 ```rust
-use gopher_orch::{GopherAgent, ConfigBuilder};
+use gopher_mcp_rust::{GopherAgent, ConfigBuilder};
 use std::env;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -407,7 +407,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Using Local MCP Servers
 
 ```rust
-use gopher_orch::{GopherAgent, ConfigBuilder};
+use gopher_mcp_rust::{GopherAgent, ConfigBuilder};
 
 const SERVER_CONFIG: &str = r#"{
     "succeeded": true,

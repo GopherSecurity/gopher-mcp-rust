@@ -12,7 +12,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 // Re-export gopher_orch error for convenience
-pub use gopher_orch::Error as GopherOrchError;
+pub use gopher_mcp_rust::Error as GopherOrchError;
 
 /// Application error type.
 #[derive(Error, Debug)]
