@@ -165,6 +165,7 @@ echo -e "${YELLOW}Step 2: Determining target version...${NC}"
 if [ -z "$INPUT_VERSION" ]; then
     # No argument provided, use gopher-orch version directly
     TARGET_VERSION="$GOPHER_ORCH_VERSION"
+    CARGO_VERSION="$TARGET_VERSION"
     echo -e "  No version argument provided"
     echo -e "  Using gopher-orch version: ${GREEN}$TARGET_VERSION${NC}"
 else
@@ -177,15 +178,20 @@ else
             exit 1
         fi
         TARGET_VERSION="$INPUT_VERSION"
+        CARGO_VERSION="$TARGET_VERSION"
     elif echo "$INPUT_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
         # X.Y.Z.E format - first 3 parts must match gopher-orch
         INPUT_BASE=$(echo "$INPUT_VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+$/\1/')
+        INPUT_EXT=$(echo "$INPUT_VERSION" | sed -E 's/^[0-9]+\.[0-9]+\.[0-9]+\.([0-9]+)$/\1/')
         if [ "$INPUT_BASE" != "$GOPHER_ORCH_VERSION" ]; then
             echo -e "${RED}Error: Version base $INPUT_BASE does not match gopher-orch version $GOPHER_ORCH_VERSION${NC}"
             echo "Extended version X.Y.Z.E must have X.Y.Z matching gopher-orch."
             exit 1
         fi
         TARGET_VERSION="$INPUT_VERSION"
+        # Convert X.Y.Z.E to X.Y.Z-E for Cargo.toml (semver pre-release format)
+        CARGO_VERSION="${INPUT_BASE}-${INPUT_EXT}"
+        echo -e "  ${CYAN}Note: Cargo version will be ${CARGO_VERSION} (semver format)${NC}"
     else
         echo -e "${RED}Error: Invalid version format '$INPUT_VERSION'${NC}"
         echo "Expected format: X.Y.Z or X.Y.Z.E"
@@ -223,17 +229,17 @@ if [ ! -f "$CARGO_TOML" ]; then
     exit 1
 fi
 
-# Get current version
-CURRENT_VERSION=$(grep -E '^version = "[0-9]+\.[0-9]+\.[0-9]+"' "$CARGO_TOML" | head -1 | sed -E 's/version = "([^"]+)"/\1/')
+# Get current version (matches X.Y.Z or X.Y.Z-N format)
+CURRENT_VERSION=$(grep -E '^version = "' "$CARGO_TOML" | head -1 | sed -E 's/version = "([^"]+)"/\1/')
 echo -e "  Current version: ${YELLOW}$CURRENT_VERSION${NC}"
 
 if [ "$DRY_RUN" = false ]; then
-    # Update version in Cargo.toml
-    sed -i.bak -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+.*\"/version = \"$TARGET_VERSION\"/" "$CARGO_TOML"
+    # Update version in Cargo.toml (use CARGO_VERSION for semver compatibility)
+    sed -i.bak -E "s/^version = \"[^\"]+\"/version = \"$CARGO_VERSION\"/" "$CARGO_TOML"
     rm -f "${CARGO_TOML}.bak"
 fi
 
-echo -e "  Updated to: ${GREEN}$TARGET_VERSION${NC}"
+echo -e "  Updated to: ${GREEN}$CARGO_VERSION${NC}"
 
 # -----------------------------------------------------------------------------
 # Step 5: Check [Unreleased] section has content
@@ -452,6 +458,9 @@ echo -e "${GREEN}  Release preparation complete!${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 echo -e "Version:           ${CYAN}$TARGET_VERSION${NC}"
+if [ "$CARGO_VERSION" != "$TARGET_VERSION" ]; then
+    echo -e "Cargo version:     ${CYAN}$CARGO_VERSION${NC} (semver)"
+fi
 echo -e "Tag:               ${CYAN}$TAG_VERSION${NC}"
 echo -e "gopher-orch:       ${CYAN}$GOPHER_ORCH_VERSION${NC}"
 if [ "$PUBLISH_CRATES" = true ]; then
@@ -476,7 +485,7 @@ if [ "$PUBLISH_CRATES" = true ]; then
     echo ""
     echo "  # From crates.io"
     echo "  [dependencies]"
-    echo "  gopher-orch = \"$TARGET_VERSION\""
+    echo "  gopher-orch = \"$CARGO_VERSION\""
 fi
 echo ""
 echo "  # From GitHub"
