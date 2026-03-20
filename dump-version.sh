@@ -6,7 +6,7 @@
 #   ./dump-version.sh [OPTIONS] [VERSION]
 #
 # Options:
-#   --publish       Also publish to crates.io after creating release
+#   --skip-crates   Skip publishing to crates.io (default: publish)
 #   --dry-run       Show what would be done without making changes
 #   --help          Show this help message
 #
@@ -22,14 +22,14 @@
 #   4. Update CHANGELOG.md ([Unreleased] -> [X.Y.Z] - date)
 #   5. Create git tag vX.Y.Z
 #   6. Commit the changes
-#   7. (Optional) Publish to crates.io if --publish flag is set
+#   7. Publish to crates.io (unless --skip-crates is specified)
 #
 # After running this script:
 #   1. Review the changes: git show HEAD
 #   2. Push to release: git push origin br_release vX.Y.Z
 #
 # Environment variables:
-#   CARGO_REGISTRY_TOKEN - crates.io API token (for --publish)
+#   CARGO_REGISTRY_TOKEN - crates.io API token (required for publishing)
 #
 
 set -e
@@ -50,15 +50,15 @@ CHANGELOG_FILE="CHANGELOG.md"
 CARGO_TOML="Cargo.toml"
 
 # Options
-PUBLISH_CRATES=false
+PUBLISH_CRATES=true
 DRY_RUN=false
 INPUT_VERSION=""
 
 # Parse options
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --publish)
-            PUBLISH_CRATES=true
+        --skip-crates|--no-crates)
+            PUBLISH_CRATES=false
             shift
             ;;
         --dry-run)
@@ -69,7 +69,7 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [OPTIONS] [VERSION]"
             echo ""
             echo "Options:"
-            echo "  --publish       Also publish to crates.io after creating release"
+            echo "  --skip-crates   Skip publishing to crates.io (default: publish)"
             echo "  --dry-run       Show what would be done without making changes"
             echo "  --help          Show this help message"
             echo ""
@@ -78,13 +78,13 @@ while [[ $# -gt 0 ]]; do
             echo "                  Format: X.Y.Z or X.Y.Z.E"
             echo ""
             echo "Examples:"
-            echo "  $0                      # Release with gopher-orch version"
+            echo "  $0                      # Release to GitHub and crates.io"
             echo "  $0 0.1.2                # Release specific version"
-            echo "  $0 --publish            # Release and publish to crates.io"
+            echo "  $0 --skip-crates        # Release to GitHub only"
             echo "  $0 --dry-run            # Preview changes without executing"
             echo ""
             echo "Environment variables:"
-            echo "  CARGO_REGISTRY_TOKEN    crates.io API token (for --publish)"
+            echo "  CARGO_REGISTRY_TOKEN    crates.io API token (required for publishing)"
             echo ""
             exit 0
             ;;
@@ -111,9 +111,11 @@ if [ "$DRY_RUN" = true ]; then
 fi
 
 if [ "$PUBLISH_CRATES" = true ]; then
-    echo -e "${CYAN}crates.io publishing: ENABLED${NC}"
-    echo ""
+    echo -e "${CYAN}Publishing to: GitHub + crates.io${NC}"
+else
+    echo -e "${YELLOW}Publishing to: GitHub only (--skip-crates)${NC}"
 fi
+echo ""
 
 # -----------------------------------------------------------------------------
 # Step 1: Fetch latest gopher-orch version from GitHub releases
@@ -417,23 +419,18 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# Step 8: Publish to crates.io (optional)
+# Step 8: Publish to crates.io
 # -----------------------------------------------------------------------------
+echo ""
 if [ "$PUBLISH_CRATES" = true ]; then
-    echo ""
     echo -e "${YELLOW}Step 8: Publishing to crates.io...${NC}"
 
     if [ "$DRY_RUN" = true ]; then
-        echo -e "  ${YELLOW}[DRY RUN] Would run: cargo publish --dry-run${NC}"
+        echo -e "  ${YELLOW}[DRY RUN] Would run: cargo publish${NC}"
+        echo -e "  ${CYAN}Verifying package...${NC}"
         cargo publish --dry-run 2>&1 | head -20 || true
     else
         echo -e "  ${CYAN}Running cargo publish...${NC}"
-
-        # Check if logged in
-        if ! cargo login --help &>/dev/null; then
-            echo -e "${RED}Error: cargo login not available${NC}"
-            exit 1
-        fi
 
         # Publish
         if cargo publish; then
@@ -445,6 +442,8 @@ if [ "$PUBLISH_CRATES" = true ]; then
             exit 1
         fi
     fi
+else
+    echo -e "${YELLOW}Step 8: Skipping crates.io publish (--skip-crates)${NC}"
 fi
 
 echo ""
@@ -457,6 +456,8 @@ echo -e "Tag:               ${CYAN}$TAG_VERSION${NC}"
 echo -e "gopher-orch:       ${CYAN}$GOPHER_ORCH_VERSION${NC}"
 if [ "$PUBLISH_CRATES" = true ]; then
     echo -e "crates.io:         ${GREEN}Published${NC}"
+else
+    echo -e "crates.io:         ${YELLOW}Skipped${NC}"
 fi
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
@@ -467,14 +468,16 @@ echo -e "${CYAN}After pushing:${NC}"
 echo "  - CI workflow will create GitHub Release"
 echo "  - Native libraries will be attached to release"
 if [ "$PUBLISH_CRATES" = false ]; then
-    echo "  - (Optional) Publish to crates.io: cargo publish"
+    echo "  - Publish to crates.io manually: cargo publish"
 fi
 echo ""
 echo -e "${CYAN}Users can install with:${NC}"
-echo ""
-echo "  # From crates.io (if published)"
-echo "  [dependencies]"
-echo "  gopher-orch = \"$TARGET_VERSION\""
+if [ "$PUBLISH_CRATES" = true ]; then
+    echo ""
+    echo "  # From crates.io"
+    echo "  [dependencies]"
+    echo "  gopher-orch = \"$TARGET_VERSION\""
+fi
 echo ""
 echo "  # From GitHub"
 echo "  [dependencies]"
