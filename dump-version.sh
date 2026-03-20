@@ -3,7 +3,12 @@
 # dump-version.sh - Prepare a new release version for gopher-mcp-rust
 #
 # Usage:
-#   ./dump-version.sh [VERSION]
+#   ./dump-version.sh [OPTIONS] [VERSION]
+#
+# Options:
+#   --publish       Also publish to crates.io after creating release
+#   --dry-run       Show what would be done without making changes
+#   --help          Show this help message
 #
 # Arguments:
 #   VERSION - Optional. Format: X.Y.Z or X.Y.Z.E
@@ -17,10 +22,14 @@
 #   4. Update CHANGELOG.md ([Unreleased] -> [X.Y.Z] - date)
 #   5. Create git tag vX.Y.Z
 #   6. Commit the changes
+#   7. (Optional) Publish to crates.io if --publish flag is set
 #
 # After running this script:
 #   1. Review the changes: git show HEAD
 #   2. Push to release: git push origin br_release vX.Y.Z
+#
+# Environment variables:
+#   CARGO_REGISTRY_TOKEN - crates.io API token (for --publish)
 #
 
 set -e
@@ -40,10 +49,71 @@ cd "$SCRIPT_DIR"
 CHANGELOG_FILE="CHANGELOG.md"
 CARGO_TOML="Cargo.toml"
 
+# Options
+PUBLISH_CRATES=false
+DRY_RUN=false
+INPUT_VERSION=""
+
+# Parse options
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --publish)
+            PUBLISH_CRATES=true
+            shift
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        --help|-h)
+            echo "Usage: $0 [OPTIONS] [VERSION]"
+            echo ""
+            echo "Options:"
+            echo "  --publish       Also publish to crates.io after creating release"
+            echo "  --dry-run       Show what would be done without making changes"
+            echo "  --help          Show this help message"
+            echo ""
+            echo "Arguments:"
+            echo "  VERSION         Version to release (default: latest gopher-orch version)"
+            echo "                  Format: X.Y.Z or X.Y.Z.E"
+            echo ""
+            echo "Examples:"
+            echo "  $0                      # Release with gopher-orch version"
+            echo "  $0 0.1.2                # Release specific version"
+            echo "  $0 --publish            # Release and publish to crates.io"
+            echo "  $0 --dry-run            # Preview changes without executing"
+            echo ""
+            echo "Environment variables:"
+            echo "  CARGO_REGISTRY_TOKEN    crates.io API token (for --publish)"
+            echo ""
+            exit 0
+            ;;
+        -*)
+            echo -e "${RED}Unknown option: $1${NC}"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+        *)
+            INPUT_VERSION="$1"
+            shift
+            ;;
+    esac
+done
+
 echo -e "${CYAN}========================================${NC}"
 echo -e "${CYAN}  gopher-mcp-rust Release Version Dump${NC}"
 echo -e "${CYAN}========================================${NC}"
 echo ""
+
+if [ "$DRY_RUN" = true ]; then
+    echo -e "${YELLOW}DRY RUN MODE - No changes will be made${NC}"
+    echo ""
+fi
+
+if [ "$PUBLISH_CRATES" = true ]; then
+    echo -e "${CYAN}crates.io publishing: ENABLED${NC}"
+    echo ""
+fi
 
 # -----------------------------------------------------------------------------
 # Step 1: Fetch latest gopher-orch version from GitHub releases
@@ -89,8 +159,6 @@ fi
 # -----------------------------------------------------------------------------
 echo ""
 echo -e "${YELLOW}Step 2: Determining target version...${NC}"
-
-INPUT_VERSION="$1"
 
 if [ -z "$INPUT_VERSION" ]; then
     # No argument provided, use gopher-orch version directly
@@ -157,9 +225,11 @@ fi
 CURRENT_VERSION=$(grep -E '^version = "[0-9]+\.[0-9]+\.[0-9]+"' "$CARGO_TOML" | head -1 | sed -E 's/version = "([^"]+)"/\1/')
 echo -e "  Current version: ${YELLOW}$CURRENT_VERSION${NC}"
 
-# Update version in Cargo.toml
-sed -i.bak -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+.*\"/version = \"$TARGET_VERSION\"/" "$CARGO_TOML"
-rm -f "${CARGO_TOML}.bak"
+if [ "$DRY_RUN" = false ]; then
+    # Update version in Cargo.toml
+    sed -i.bak -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+.*\"/version = \"$TARGET_VERSION\"/" "$CARGO_TOML"
+    rm -f "${CARGO_TOML}.bak"
+fi
 
 echo -e "  Updated to: ${GREEN}$TARGET_VERSION${NC}"
 
@@ -171,7 +241,8 @@ echo -e "${YELLOW}Step 5: Checking [Unreleased] section...${NC}"
 
 if [ ! -f "$CHANGELOG_FILE" ]; then
     echo -e "${YELLOW}Warning: $CHANGELOG_FILE not found, creating one...${NC}"
-    cat > "$CHANGELOG_FILE" << EOF
+    if [ "$DRY_RUN" = false ]; then
+        cat > "$CHANGELOG_FILE" << EOF
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -192,6 +263,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/HEAD
 EOF
+    fi
 fi
 
 # Extract content between [Unreleased] and next ## section
@@ -201,10 +273,12 @@ UNRELEASED_CONTENT=$(sed -n '/^## \[Unreleased\]/,/^## \[/p' "$CHANGELOG_FILE" |
 if [ -z "$UNRELEASED_CONTENT" ]; then
     echo -e "${YELLOW}Warning: [Unreleased] section in CHANGELOG.md appears empty${NC}"
     echo "You may want to add release notes before continuing."
-    read -p "Continue anyway? (y/N) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
+    if [ "$DRY_RUN" = false ]; then
+        read -p "Continue anyway? (y/N) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
     fi
 else
     echo -e "  ${GREEN}[Unreleased] section has content${NC}"
@@ -221,78 +295,80 @@ echo -e "${YELLOW}Step 6: Updating CHANGELOG.md...${NC}"
 TODAY=$(date +%Y-%m-%d)
 REPO_URL="https://github.com/GopherSecurity/gopher-mcp-rust"
 
-# Create backup
-cp "$CHANGELOG_FILE" "${CHANGELOG_FILE}.bak"
+if [ "$DRY_RUN" = false ]; then
+    # Create backup
+    cp "$CHANGELOG_FILE" "${CHANGELOG_FILE}.bak"
 
-# Find the line number of [Unreleased] header
-UNRELEASED_LINE=$(grep -n "^## \[Unreleased\]" "$CHANGELOG_FILE" | head -1 | cut -d: -f1)
+    # Find the line number of [Unreleased] header
+    UNRELEASED_LINE=$(grep -n "^## \[Unreleased\]" "$CHANGELOG_FILE" | head -1 | cut -d: -f1)
 
-if [ -z "$UNRELEASED_LINE" ]; then
-    echo -e "${RED}Error: Could not find [Unreleased] section in CHANGELOG.md${NC}"
-    rm -f "${CHANGELOG_FILE}.bak"
-    exit 1
-fi
-
-# Find the previous version for link generation
-PREV_VERSION=$(grep -E "^## \[[0-9]+\.[0-9]+\.[0-9]+" "$CHANGELOG_FILE" | head -1 | sed -E 's/^## \[([^]]+)\].*/\1/')
-
-# Check if there's a links section at the bottom (starts with --- or [Unreleased]:)
-HAS_LINKS_SECTION=$(grep -c "^\[Unreleased\]:" "$CHANGELOG_FILE" || true)
-
-# Find where links section starts (look for --- separator or [Unreleased]: link)
-if [ "$HAS_LINKS_SECTION" -gt 0 ]; then
-    # Find the --- line before [Unreleased]: link, or the [Unreleased]: line itself
-    LINKS_LINE=$(grep -n "^\[Unreleased\]:" "$CHANGELOG_FILE" | head -1 | cut -d: -f1)
-    # Check if there's a --- separator before it
-    SEPARATOR_LINE=$(grep -n "^---$" "$CHANGELOG_FILE" | tail -1 | cut -d: -f1)
-    if [ -n "$SEPARATOR_LINE" ] && [ "$SEPARATOR_LINE" -lt "$LINKS_LINE" ]; then
-        LINKS_LINE=$SEPARATOR_LINE
-    fi
-else
-    LINKS_LINE=""
-fi
-
-# Build new CHANGELOG content
-{
-    # 1. Header section (everything before [Unreleased])
-    head -n $((UNRELEASED_LINE - 1)) "$CHANGELOG_FILE"
-
-    # 2. New [Unreleased] section (empty)
-    echo "## [Unreleased]"
-    echo ""
-
-    # 3. New version section with today's date
-    echo "## [$TARGET_VERSION] - $TODAY"
-
-    # 4. Content after old [Unreleased] header until links section or EOF
-    if [ -n "$LINKS_LINE" ]; then
-        # Get content between [Unreleased] header and links section
-        tail -n +$((UNRELEASED_LINE + 1)) "$CHANGELOG_FILE" | head -n $((LINKS_LINE - UNRELEASED_LINE - 1))
-    else
-        # No links section, get everything after [Unreleased] header
-        tail -n +$((UNRELEASED_LINE + 1)) "$CHANGELOG_FILE"
+    if [ -z "$UNRELEASED_LINE" ]; then
+        echo -e "${RED}Error: Could not find [Unreleased] section in CHANGELOG.md${NC}"
+        rm -f "${CHANGELOG_FILE}.bak"
+        exit 1
     fi
 
-    # 5. Add/Update links section
-    echo ""
-    echo "---"
-    echo ""
-    # [Unreleased] link pointing to compare from new version to HEAD
-    echo "[Unreleased]: ${REPO_URL}/compare/v${TARGET_VERSION}...HEAD"
-    # Add new version link
-    if [ -n "$PREV_VERSION" ]; then
-        echo "[$TARGET_VERSION]: ${REPO_URL}/compare/v${PREV_VERSION}...v${TARGET_VERSION}"
-    else
-        echo "[$TARGET_VERSION]: ${REPO_URL}/releases/tag/v${TARGET_VERSION}"
-    fi
-    # Keep existing version links (skip old [Unreleased] link and current version)
+    # Find the previous version for link generation
+    PREV_VERSION=$(grep -E "^## \[[0-9]+\.[0-9]+\.[0-9]+" "$CHANGELOG_FILE" | head -1 | sed -E 's/^## \[([^]]+)\].*/\1/')
+
+    # Check if there's a links section at the bottom (starts with --- or [Unreleased]:)
+    HAS_LINKS_SECTION=$(grep -c "^\[Unreleased\]:" "$CHANGELOG_FILE" || true)
+
+    # Find where links section starts (look for --- separator or [Unreleased]: link)
     if [ "$HAS_LINKS_SECTION" -gt 0 ]; then
-        grep -E "^\[[0-9]+\.[0-9]+\.[0-9]+" "$CHANGELOG_FILE" | grep -v "^\[$TARGET_VERSION\]" || true
+        # Find the --- line before [Unreleased]: link, or the [Unreleased]: line itself
+        LINKS_LINE=$(grep -n "^\[Unreleased\]:" "$CHANGELOG_FILE" | head -1 | cut -d: -f1)
+        # Check if there's a --- separator before it
+        SEPARATOR_LINE=$(grep -n "^---$" "$CHANGELOG_FILE" | tail -1 | cut -d: -f1)
+        if [ -n "$SEPARATOR_LINE" ] && [ "$SEPARATOR_LINE" -lt "$LINKS_LINE" ]; then
+            LINKS_LINE=$SEPARATOR_LINE
+        fi
+    else
+        LINKS_LINE=""
     fi
-} > "${CHANGELOG_FILE}.new"
 
-mv "${CHANGELOG_FILE}.new" "$CHANGELOG_FILE"
-rm -f "${CHANGELOG_FILE}.bak"
+    # Build new CHANGELOG content
+    {
+        # 1. Header section (everything before [Unreleased])
+        head -n $((UNRELEASED_LINE - 1)) "$CHANGELOG_FILE"
+
+        # 2. New [Unreleased] section (empty)
+        echo "## [Unreleased]"
+        echo ""
+
+        # 3. New version section with today's date
+        echo "## [$TARGET_VERSION] - $TODAY"
+
+        # 4. Content after old [Unreleased] header until links section or EOF
+        if [ -n "$LINKS_LINE" ]; then
+            # Get content between [Unreleased] header and links section
+            tail -n +$((UNRELEASED_LINE + 1)) "$CHANGELOG_FILE" | head -n $((LINKS_LINE - UNRELEASED_LINE - 1))
+        else
+            # No links section, get everything after [Unreleased] header
+            tail -n +$((UNRELEASED_LINE + 1)) "$CHANGELOG_FILE"
+        fi
+
+        # 5. Add/Update links section
+        echo ""
+        echo "---"
+        echo ""
+        # [Unreleased] link pointing to compare from new version to HEAD
+        echo "[Unreleased]: ${REPO_URL}/compare/v${TARGET_VERSION}...HEAD"
+        # Add new version link
+        if [ -n "$PREV_VERSION" ]; then
+            echo "[$TARGET_VERSION]: ${REPO_URL}/compare/v${PREV_VERSION}...v${TARGET_VERSION}"
+        else
+            echo "[$TARGET_VERSION]: ${REPO_URL}/releases/tag/v${TARGET_VERSION}"
+        fi
+        # Keep existing version links (skip old [Unreleased] link and current version)
+        if [ "$HAS_LINKS_SECTION" -gt 0 ]; then
+            grep -E "^\[[0-9]+\.[0-9]+\.[0-9]+" "$CHANGELOG_FILE" | grep -v "^\[$TARGET_VERSION\]" || true
+        fi
+    } > "${CHANGELOG_FILE}.new"
+
+    mv "${CHANGELOG_FILE}.new" "$CHANGELOG_FILE"
+    rm -f "${CHANGELOG_FILE}.bak"
+fi
 
 echo -e "  ${GREEN}CHANGELOG.md updated${NC}"
 echo -e "  [Unreleased] -> [$TARGET_VERSION] - $TODAY"
@@ -303,16 +379,17 @@ echo -e "  [Unreleased] -> [$TARGET_VERSION] - $TODAY"
 echo ""
 echo -e "${YELLOW}Step 7: Committing changes and creating tag...${NC}"
 
-# Show what changed
-echo ""
-echo -e "${CYAN}Changes to be committed:${NC}"
-git diff --stat "$CARGO_TOML" "$CHANGELOG_FILE"
+if [ "$DRY_RUN" = false ]; then
+    # Show what changed
+    echo ""
+    echo -e "${CYAN}Changes to be committed:${NC}"
+    git diff --stat "$CARGO_TOML" "$CHANGELOG_FILE"
 
-echo ""
-echo -e "${CYAN}Committing...${NC}"
+    echo ""
+    echo -e "${CYAN}Committing...${NC}"
 
-git add "$CARGO_TOML" "$CHANGELOG_FILE"
-git commit -m "Release version $TARGET_VERSION
+    git add "$CARGO_TOML" "$CHANGELOG_FILE"
+    git commit -m "Release version $TARGET_VERSION
 
 Prepare release v$TARGET_VERSION:
 - Update Cargo.toml: version = \"$TARGET_VERSION\"
@@ -324,16 +401,51 @@ Changes in this release:
 $(echo "$UNRELEASED_CONTENT" | head -10)
 "
 
-# Create annotated tag
-echo ""
-echo -e "${CYAN}Creating tag $TAG_VERSION...${NC}"
-git tag -a "$TAG_VERSION" -m "Release $TARGET_VERSION
+    # Create annotated tag
+    echo ""
+    echo -e "${CYAN}Creating tag $TAG_VERSION...${NC}"
+    git tag -a "$TAG_VERSION" -m "Release $TARGET_VERSION
 
 gopher-orch version: $GOPHER_ORCH_VERSION
 
 Changes:
 $(echo "$UNRELEASED_CONTENT" | head -15)
 "
+else
+    echo -e "  ${YELLOW}[DRY RUN] Would commit Cargo.toml and CHANGELOG.md${NC}"
+    echo -e "  ${YELLOW}[DRY RUN] Would create tag $TAG_VERSION${NC}"
+fi
+
+# -----------------------------------------------------------------------------
+# Step 8: Publish to crates.io (optional)
+# -----------------------------------------------------------------------------
+if [ "$PUBLISH_CRATES" = true ]; then
+    echo ""
+    echo -e "${YELLOW}Step 8: Publishing to crates.io...${NC}"
+
+    if [ "$DRY_RUN" = true ]; then
+        echo -e "  ${YELLOW}[DRY RUN] Would run: cargo publish --dry-run${NC}"
+        cargo publish --dry-run 2>&1 | head -20 || true
+    else
+        echo -e "  ${CYAN}Running cargo publish...${NC}"
+
+        # Check if logged in
+        if ! cargo login --help &>/dev/null; then
+            echo -e "${RED}Error: cargo login not available${NC}"
+            exit 1
+        fi
+
+        # Publish
+        if cargo publish; then
+            echo -e "  ${GREEN}Successfully published to crates.io${NC}"
+        else
+            echo -e "${RED}Error: Failed to publish to crates.io${NC}"
+            echo "The git commit and tag were created. You can manually publish later with:"
+            echo "  cargo publish"
+            exit 1
+        fi
+    fi
+fi
 
 echo ""
 echo -e "${GREEN}========================================${NC}"
@@ -343,6 +455,9 @@ echo ""
 echo -e "Version:           ${CYAN}$TARGET_VERSION${NC}"
 echo -e "Tag:               ${CYAN}$TAG_VERSION${NC}"
 echo -e "gopher-orch:       ${CYAN}$GOPHER_ORCH_VERSION${NC}"
+if [ "$PUBLISH_CRATES" = true ]; then
+    echo -e "crates.io:         ${GREEN}Published${NC}"
+fi
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
 echo "  1. Review the commit: git show HEAD"
@@ -351,11 +466,17 @@ echo ""
 echo -e "${CYAN}After pushing:${NC}"
 echo "  - CI workflow will create GitHub Release"
 echo "  - Native libraries will be attached to release"
+if [ "$PUBLISH_CRATES" = false ]; then
+    echo "  - (Optional) Publish to crates.io: cargo publish"
+fi
 echo ""
 echo -e "${CYAN}Users can install with:${NC}"
-echo "  # Add to Cargo.toml"
+echo ""
+echo "  # From crates.io (if published)"
+echo "  [dependencies]"
 echo "  gopher-orch = \"$TARGET_VERSION\""
 echo ""
-echo "  # Or via cargo add"
-echo "  cargo add gopher-orch@$TARGET_VERSION"
+echo "  # From GitHub"
+echo "  [dependencies]"
+echo "  gopher-orch = { git = \"https://github.com/GopherSecurity/gopher-mcp-rust.git\", tag = \"$TAG_VERSION\" }"
 echo ""

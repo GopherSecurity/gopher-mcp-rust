@@ -7,10 +7,18 @@ on:
 permissions:
   contents: write
 
+env:
+  # Set to 'true' to also publish to crates.io
+  PUBLISH_CRATES: ${{ vars.PUBLISH_CRATES || 'false' }}
+
 jobs:
   release:
     name: Create Release with Native Binaries
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      version_tag: ${{ steps.version.outputs.version_tag }}
+      release_created: ${{ steps.check_release.outputs.exists != 'true' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -100,6 +108,8 @@ jobs:
 
           ### Installation
 
+          #### From crates.io
+
           \`\`\`toml
           # Add to Cargo.toml
           [dependencies]
@@ -110,6 +120,13 @@ jobs:
 
           \`\`\`bash
           cargo add gopher-orch@${VERSION}
+          \`\`\`
+
+          #### From GitHub
+
+          \`\`\`toml
+          [dependencies]
+          gopher-orch = { git = "https://github.com/GopherSecurity/gopher-mcp-rust.git", tag = "${VERSION_TAG}" }
           \`\`\`
 
           ### Native Library Installation
@@ -199,6 +216,52 @@ jobs:
               echo "- \`${file}\`" >> $GITHUB_STEP_SUMMARY
             done
           fi
+
+  publish-crates:
+    name: Publish to crates.io
+    needs: release
+    runs-on: ubuntu-latest
+    if: |
+      needs.release.outputs.release_created == 'true' &&
+      (vars.PUBLISH_CRATES == 'true' || github.event.head_commit.message contains '[publish]')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-publish-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Verify package
+        run: |
+          echo "Verifying package before publish..."
+          cargo package --list
+          cargo publish --dry-run
+
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          echo "Publishing version ${{ needs.release.outputs.version }} to crates.io..."
+          cargo publish
+
+      - name: Summary
+        run: |
+          echo "## crates.io Publish Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** ${{ needs.release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **crates.io:** https://crates.io/crates/gopher-orch/${{ needs.release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **docs.rs:** https://docs.rs/gopher-orch/${{ needs.release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
 
   test:
     name: Run Tests
