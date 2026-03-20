@@ -21,10 +21,11 @@
 #   4. Update CHANGELOG.md ([Unreleased] -> [X.Y.Z] - date)
 #   5. Create git tag vX.Y.Z
 #   6. Commit the changes
+#   7. Push the tag to remote
 #
 # After running this script:
 #   1. Review the changes: git show HEAD
-#   2. Push to release: git push origin br_release vX.Y.Z
+#   2. Push to release: git push origin br_release
 #   3. CI workflow will create GitHub Release and publish to crates.io
 #
 
@@ -73,7 +74,7 @@ while [[ $# -gt 0 ]]; do
             echo "  $0 --dry-run            # Preview changes without executing"
             echo ""
             echo "After running this script, push to trigger CI:"
-            echo "  git push origin br_release vX.Y.Z"
+            echo "  git push origin br_release"
             echo ""
             echo "CI workflow will:"
             echo "  - Create GitHub Release with native binaries"
@@ -405,6 +406,12 @@ gopher-orch version: $GOPHER_ORCH_VERSION
 Changes:
 $(echo "$UNRELEASED_CONTENT" | head -15)
 "
+
+    # Push the tag to remote
+    echo ""
+    echo -e "${CYAN}Pushing tag $TAG_VERSION to remote...${NC}"
+    git push origin "$TAG_VERSION"
+    echo -e "  ${GREEN}Tag pushed successfully${NC}"
 else
     echo -e "  ${YELLOW}[DRY RUN] Would commit Cargo.toml and CHANGELOG.md${NC}"
     echo -e "  ${YELLOW}[DRY RUN] Would create tag $TAG_VERSION${NC}"
@@ -423,7 +430,7 @@ echo -e "gopher-orch:       ${CYAN}$GOPHER_ORCH_VERSION${NC}"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
 echo "  1. Review the commit: git show HEAD"
-echo "  2. Push to release:   git push origin br_release $TAG_VERSION"
+echo "  2. Push to release:   git push origin br_release"
 echo ""
 echo -e "${CYAN}After pushing, CI will:${NC}"
 echo "  - Create GitHub Release with native binaries"
