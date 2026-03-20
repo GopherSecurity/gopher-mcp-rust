@@ -2,7 +2,7 @@
 //!
 //! These tests verify that the FFI bindings work correctly with the native library.
 
-use gopher_orch::{init, is_initialized, ConfigBuilder, GopherAgent};
+use gopher_mcp_rust::{init, is_initialized, ConfigBuilder, GopherAgent};
 use std::path::Path;
 
 const TEST_SERVER_CONFIG: &str = r#"{
