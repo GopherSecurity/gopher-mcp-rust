@@ -48,6 +48,7 @@ Rust SDK for Gopher Orch - AI Agent orchestration framework with native C++ perf
 - **Tool Orchestration** - Manage and execute tools across multiple MCP servers
 - **State Management** - Built-in state graph for complex workflows
 - **Memory Safety** - Rust's ownership system with zero-cost abstractions
+- **OAuth 2.0 Authentication** - JWT validation with JWKS support (feature-gated)
 
 ## When to Use This SDK
 
@@ -95,23 +96,35 @@ This SDK is ideal for:
 
 ## Installation
 
-### Option 1: Cargo (when published)
+### Option 1: From crates.io
 
 ```toml
 [dependencies]
-gopher-mcp-rust ="0.1.0"
+gopher-mcp-rust = "0.1.2"
 ```
 
 ### Option 2: Git Dependency
 
 ```toml
 [dependencies]
-gopher-mcp-rust ={ git = "https://github.com/GopherSecurity/gopher-mcp-rust.git" }
+gopher-mcp-rust = { git = "https://github.com/GopherSecurity/gopher-mcp-rust.git" }
 ```
 
 ### Option 3: Build from Source
 
 See [Building from Source](#building-from-source) section below.
+
+### With Auth Feature
+
+Enable OAuth 2.0 / JWT authentication support:
+
+```toml
+[dependencies]
+gopher-mcp-rust = { version = "0.1.2", features = ["auth"] }
+
+# Or with git
+gopher-mcp-rust = { git = "https://github.com/GopherSecurity/gopher-mcp-rust.git", features = ["auth"] }
+```
 
 ## Quick Start
 
@@ -465,6 +478,59 @@ cd examples/server3002 && npm install && npm run dev
 ANTHROPIC_API_KEY=your-key cargo run --example client_example_json
 ```
 
+### Auth MCP Server Example
+
+The `examples/auth` directory contains a complete OAuth 2.0 protected MCP server example using Axum:
+
+```bash
+cd examples/auth
+
+# Run with auth disabled (development mode)
+./run_example.sh --no-auth
+
+# Run with full OAuth support
+./run_example.sh
+```
+
+**Features:**
+- OAuth 2.0 / OIDC discovery endpoints (RFC 8414, RFC 9728)
+- JWT token validation via native library
+- Scope-based authorization for MCP tools
+- Example weather tools with different scope requirements
+
+**Available Tools:**
+
+| Tool | Scope Required | Description |
+|------|----------------|-------------|
+| `get-weather` | None | Get current weather for a city |
+| `get-forecast` | `mcp:read` | Get 5-day weather forecast |
+| `get-weather-alerts` | `mcp:admin` | Get weather alerts for a region |
+
+**Using the Auth Client:**
+
+```rust
+use gopher_mcp_rust::GopherAuthClient;
+
+// Create auth client with JWKS endpoint
+let client = GopherAuthClient::new(
+    "https://auth.example.com/.well-known/jwks.json",
+    "https://auth.example.com"
+)?;
+
+// Validate a JWT token
+let result = client.validate_token("eyJ...", 60);
+if result.valid {
+    println!("Token is valid!");
+    println!("Subject: {}", result.payload.sub);
+    println!("Scopes: {:?}", result.payload.scope);
+}
+
+// Extract payload without validation
+let payload = client.extract_payload("eyJ...")?;
+```
+
+See [examples/auth/README.md](examples/auth/README.md) for full documentation.
+
 ---
 
 ## Development
@@ -633,7 +699,7 @@ Contributions are welcome! Please read our contributing guidelines.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+Apache License 2.0 - see [LICENSE](LICENSE) file for details.
 
 ## Links
 
