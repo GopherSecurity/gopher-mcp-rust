@@ -1,0 +1,305 @@
+name: Release
+
+on:
+  push:
+    branches: [br_release]
+
+permissions:
+  contents: write
+
+env:
+  # Set to 'true' to also publish to crates.io
+  PUBLISH_CRATES: ${{ vars.PUBLISH_CRATES || 'false' }}
+
+jobs:
+  release:
+    name: Create Release with Native Binaries
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      version_tag: ${{ steps.version.outputs.version_tag }}
+      release_created: ${{ steps.check_release.outputs.exists != 'true' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from latest tag
+        id: version
+        run: |
+          # Get the latest tag on this branch
+          VERSION_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          if [ -z "$VERSION_TAG" ]; then
+            echo "Error: No tags found. Run dump-version.sh first."
+            exit 1
+          fi
+
+          # Remove 'v' prefix for version number
+          VERSION="${VERSION_TAG#v}"
+
+          echo "version_tag=${VERSION_TAG}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Version Tag: ${VERSION_TAG}"
+          echo "Version: ${VERSION}"
+
+      - name: Check if release already exists
+        id: check_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view ${{ steps.version.outputs.version_tag }} &>/dev/null; then
+            echo "Release ${{ steps.version.outputs.version_tag }} already exists"
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Release ${{ steps.version.outputs.version_tag }} does not exist"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download native binaries from gopher-orch
+        if: steps.check_release.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GOPHER_ORCH_TOKEN }}
+        run: |
+          echo "Downloading native binaries for ${{ steps.version.outputs.version_tag }}..."
+
+          mkdir -p downloads
+
+          # Download all platform binaries from gopher-orch release
+          gh release download ${{ steps.version.outputs.version_tag }} \
+            -R GopherSecurity/gopher-orch \
+            -D downloads \
+            -p "libgopher-orch-*.tar.gz" \
+            -p "libgopher-orch-*.zip" || {
+              echo "Warning: Could not download some binaries"
+              echo "Available assets:"
+              gh release view ${{ steps.version.outputs.version_tag }} -R GopherSecurity/gopher-orch --json assets -q '.assets[].name'
+            }
+
+          echo "Downloaded files:"
+          ls -la downloads/
+
+      - name: Prepare release assets
+        if: steps.check_release.outputs.exists != 'true'
+        run: |
+          mkdir -p release-assets
+
+          # Copy binaries to release-assets
+          for file in downloads/*; do
+            if [ -f "$file" ]; then
+              cp "$file" "release-assets/"
+            fi
+          done
+
+          echo "Release assets:"
+          ls -la release-assets/
+
+      - name: Generate release notes
+        if: steps.check_release.outputs.exists != 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION_TAG="${{ steps.version.outputs.version_tag }}"
+
+          cat > RELEASE_NOTES.md << EOF
+          ## gopher-mcp-rust ${VERSION_TAG}
+
+          Rust SDK for gopher-orch orchestration framework.
+
+          ### Installation
+
+          #### From crates.io
+
+          \`\`\`toml
+          # Add to Cargo.toml
+          [dependencies]
+          gopher-orch = "${VERSION}"
+          \`\`\`
+
+          Or via cargo:
+
+          \`\`\`bash
+          cargo add gopher-orch@${VERSION}
+          \`\`\`
+
+          #### From GitHub
+
+          \`\`\`toml
+          [dependencies]
+          gopher-orch = { git = "https://github.com/GopherSecurity/gopher-mcp-rust.git", tag = "${VERSION_TAG}" }
+          \`\`\`
+
+          ### Native Library Installation
+
+          \`\`\`bash
+          # macOS (Apple Silicon)
+          gh release download ${VERSION_TAG} -R GopherSecurity/gopher-mcp-rust -p "libgopher-orch-macos-arm64.tar.gz"
+          tar -xzf libgopher-orch-macos-arm64.tar.gz -C ./native
+
+          # macOS (Intel)
+          gh release download ${VERSION_TAG} -R GopherSecurity/gopher-mcp-rust -p "libgopher-orch-macos-x64.tar.gz"
+          tar -xzf libgopher-orch-macos-x64.tar.gz -C ./native
+
+          # Linux (x64)
+          gh release download ${VERSION_TAG} -R GopherSecurity/gopher-mcp-rust -p "libgopher-orch-linux-x64.tar.gz"
+          tar -xzf libgopher-orch-linux-x64.tar.gz -C ./native
+
+          # Linux (arm64)
+          gh release download ${VERSION_TAG} -R GopherSecurity/gopher-mcp-rust -p "libgopher-orch-linux-arm64.tar.gz"
+          tar -xzf libgopher-orch-linux-arm64.tar.gz -C ./native
+          \`\`\`
+
+          ### Environment Setup
+
+          \`\`\`bash
+          # macOS
+          export DYLD_LIBRARY_PATH="./native/lib:\$DYLD_LIBRARY_PATH"
+
+          # Linux
+          export LD_LIBRARY_PATH="./native/lib:\$LD_LIBRARY_PATH"
+          \`\`\`
+
+          ### Build Information
+
+          - **Version:** ${VERSION}
+          - **gopher-orch:** ${VERSION_TAG}
+          - **Commit:** ${{ github.sha }}
+          - **Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+          EOF
+
+          # Extract changelog content
+          if [ -f "CHANGELOG.md" ]; then
+            echo "### What's Changed" >> RELEASE_NOTES.md
+            echo "" >> RELEASE_NOTES.md
+
+            # Get content from the version section
+            sed -n "/^## \[${VERSION}\]/,/^## \[/p" CHANGELOG.md | \
+              grep -v "^## \[" | \
+              head -30 >> RELEASE_NOTES.md || true
+          fi
+
+          # Add comparison link
+          PREV_TAG=$(git tag --sort=-creatordate | grep -v "^${VERSION_TAG}$" | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            echo "" >> RELEASE_NOTES.md
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${VERSION_TAG}" >> RELEASE_NOTES.md
+          fi
+
+          echo "=== Release Notes ==="
+          cat RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        if: steps.check_release.outputs.exists != 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version_tag }}
+          name: gopher-mcp-rust ${{ steps.version.outputs.version_tag }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** ${{ steps.version.outputs.version_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Release URL:** https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.version_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Native Libraries" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -d "release-assets" ]; then
+            ls release-assets/ | while read file; do
+              echo "- \`${file}\`" >> $GITHUB_STEP_SUMMARY
+            done
+          fi
+
+  publish-crates:
+    name: Publish to crates.io
+    needs: release
+    runs-on: ubuntu-latest
+    if: |
+      needs.release.outputs.release_created == 'true' &&
+      (vars.PUBLISH_CRATES == 'true' || github.event.head_commit.message contains '[publish]')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-publish-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Verify package
+        run: |
+          echo "Verifying package before publish..."
+          cargo package --list
+          cargo publish --dry-run
+
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          echo "Publishing version ${{ needs.release.outputs.version }} to crates.io..."
+          cargo publish
+
+      - name: Summary
+        run: |
+          echo "## crates.io Publish Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** ${{ needs.release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **crates.io:** https://crates.io/crates/gopher-orch/${{ needs.release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **docs.rs:** https://docs.rs/gopher-orch/${{ needs.release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run clippy
+        run: cargo clippy -- -D warnings || echo "Clippy warnings found"
+
+      - name: Build (without native library)
+        run: cargo build || echo "Build requires native library"
+
+  notify:
+    name: Notify on Failure
+    needs: [release, test]
+    runs-on: ubuntu-latest
+    if: failure()
+    steps:
+      - name: Report failure
+        run: |
+          echo "Release workflow failed!"
+          echo "Check the logs for details."

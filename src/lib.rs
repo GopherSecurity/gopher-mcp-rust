@@ -36,6 +36,10 @@ pub use config::{Config, ConfigBuilder};
 pub use error::{Error, Result};
 pub use result::{AgentResult, AgentResultStatus};
 
+// Re-export auth types when the auth feature is enabled
+#[cfg(feature = "auth")]
+pub use ffi::auth::{GopherAuthClient, TokenPayload, ValidationResult};
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Once;
 
