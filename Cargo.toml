@@ -1,16 +1,16 @@
 [package]
-name = "gopher-orch"
-version = "0.1.0"
+name = "gopher-mcp-rust"
+version = "0.1.2-9"
 edition = "2021"
 authors = ["GopherSecurity"]
 description = "Rust SDK for Gopher Orch - AI Agent orchestration framework"
-license = "MIT"
+license = "Apache-2.0"
 repository = "https://github.com/GopherSecurity/gopher-mcp-rust"
 keywords = ["ai", "agent", "mcp", "llm", "orchestration"]
 categories = ["api-bindings", "development-tools"]
 
 [lib]
-name = "gopher_orch"
+name = "gopher_mcp_rust"
 path = "src/lib.rs"
 
 [[example]]

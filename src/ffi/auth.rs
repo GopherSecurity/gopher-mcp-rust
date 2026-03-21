@@ -73,9 +73,9 @@ pub struct TokenPayload {
 // FFI function type definitions
 type GopherAuthInitFn = unsafe extern "C" fn() -> c_int;
 type GopherAuthClientCreateFn = unsafe extern "C" fn(
+    out: *mut *mut c_void,
     jwks_uri: *const c_char,
     issuer: *const c_char,
-    out: *mut *mut c_void,
 ) -> c_int;
 type GopherAuthClientDestroyFn = unsafe extern "C" fn(client: *mut c_void);
 type GopherAuthSetOptionFn =
@@ -167,7 +167,7 @@ impl GopherAuthClient {
                 })?;
 
             let mut handle: *mut c_void = ptr::null_mut();
-            let result = create(jwks_uri_c.as_ptr(), issuer_c.as_ptr(), &mut handle);
+            let result = create(&mut handle, jwks_uri_c.as_ptr(), issuer_c.as_ptr());
 
             if result != 0 || handle.is_null() {
                 return Err(Error::auth(format!(
@@ -184,22 +184,58 @@ impl GopherAuthClient {
 
     /// Load the native library from known locations.
     fn load_library() -> Result<Library, Error> {
-        // Try multiple library names and locations
+        // Try multiple library names - the auth functions are in libgopher-orch
         let lib_names = if cfg!(target_os = "macos") {
-            vec!["libgopher_auth.dylib", "gopher_auth.dylib"]
+            vec![
+                "libgopher-orch.dylib",
+                "libgopher-orch.0.dylib",
+                "libgopher_orch.dylib",
+            ]
         } else if cfg!(target_os = "windows") {
-            vec!["gopher_auth.dll", "libgopher_auth.dll"]
+            vec!["gopher-orch.dll", "libgopher-orch.dll", "gopher_orch.dll"]
         } else {
-            vec!["libgopher_auth.so", "gopher_auth.so"]
+            vec![
+                "libgopher-orch.so",
+                "libgopher-orch.so.0",
+                "libgopher_orch.so",
+            ]
         };
 
-        // Try standard paths
-        let search_paths = vec![
+        // Build search paths including environment-specified locations
+        let mut search_paths = vec![
             String::new(), // Current directory / system paths
             String::from("./"),
-            String::from("/usr/local/lib/"),
-            String::from("/usr/lib/"),
+            String::from("./native/lib/"),
+            String::from("../native/lib/"),
         ];
+
+        // Add paths from DYLD_LIBRARY_PATH / LD_LIBRARY_PATH
+        if let Ok(lib_path) = std::env::var("DYLD_LIBRARY_PATH") {
+            for path in lib_path.split(':') {
+                if !path.is_empty() {
+                    let mut p = path.to_string();
+                    if !p.ends_with('/') {
+                        p.push('/');
+                    }
+                    search_paths.push(p);
+                }
+            }
+        }
+        if let Ok(lib_path) = std::env::var("LD_LIBRARY_PATH") {
+            for path in lib_path.split(':') {
+                if !path.is_empty() {
+                    let mut p = path.to_string();
+                    if !p.ends_with('/') {
+                        p.push('/');
+                    }
+                    search_paths.push(p);
+                }
+            }
+        }
+
+        // Add standard system paths
+        search_paths.push(String::from("/usr/local/lib/"));
+        search_paths.push(String::from("/usr/lib/"));
 
         for path in &search_paths {
             for name in &lib_names {
@@ -431,7 +467,7 @@ impl GopherAuthClient {
         unsafe {
             let set_option: Symbol<GopherAuthSetOptionFn> = self
                 .library
-                .get(b"gopher_auth_set_option\0")
+                .get(b"gopher_auth_client_set_option\0")
                 .map_err(|e| Error::auth(format!("Failed to load set_option: {}", e)))?;
 
             let result = set_option(self.handle, key_c.as_ptr(), value_c.as_ptr());

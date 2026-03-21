@@ -2,7 +2,7 @@
 name = "auth-mcp-server"
 version = "0.1.0"
 edition = "2021"
-description = "OAuth-protected MCP server example using gopher-orch SDK"
+description = "OAuth-protected MCP server example using gopher-mcp-rust SDK"
 license = "MIT"
 
 [dependencies]
@@ -21,9 +21,9 @@ serde_json = "1"
 # HTTP types
 http = "1"
 
-# Gopher Orch SDK with auth FFI
-# Use git dependency for standalone example
-gopher-orch = { git = "https://github.com/GopherSecurity/gopher-mcp-rust.git", features = ["auth"] }
+# Gopher MCP Rust SDK with auth FFI
+# Use path dependency for local development
+gopher-mcp-rust = { path = "../..", features = ["auth"] }
 
 # Logging
 tracing = "0.1"
