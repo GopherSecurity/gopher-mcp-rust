@@ -6,7 +6,6 @@
 #   ./dump-version.sh [OPTIONS] [VERSION]
 #
 # Options:
-#   --skip-crates   Skip publishing to crates.io (default: publish)
 #   --dry-run       Show what would be done without making changes
 #   --help          Show this help message
 #
@@ -22,14 +21,12 @@
 #   4. Update CHANGELOG.md ([Unreleased] -> [X.Y.Z] - date)
 #   5. Create git tag vX.Y.Z
 #   6. Commit the changes
-#   7. Publish to crates.io (unless --skip-crates is specified)
+#   7. Push the tag to remote
 #
 # After running this script:
 #   1. Review the changes: git show HEAD
-#   2. Push to release: git push origin br_release vX.Y.Z
-#
-# Environment variables:
-#   CARGO_REGISTRY_TOKEN - crates.io API token (required for publishing)
+#   2. Push to release: git push origin br_release
+#   3. CI workflow will create GitHub Release and publish to crates.io
 #
 
 set -e
@@ -50,17 +47,12 @@ CHANGELOG_FILE="CHANGELOG.md"
 CARGO_TOML="Cargo.toml"
 
 # Options
-PUBLISH_CRATES=true
 DRY_RUN=false
 INPUT_VERSION=""
 
 # Parse options
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --skip-crates|--no-crates)
-            PUBLISH_CRATES=false
-            shift
-            ;;
         --dry-run)
             DRY_RUN=true
             shift
@@ -69,7 +61,6 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [OPTIONS] [VERSION]"
             echo ""
             echo "Options:"
-            echo "  --skip-crates   Skip publishing to crates.io (default: publish)"
             echo "  --dry-run       Show what would be done without making changes"
             echo "  --help          Show this help message"
             echo ""
@@ -78,13 +69,16 @@ while [[ $# -gt 0 ]]; do
             echo "                  Format: X.Y.Z or X.Y.Z.E"
             echo ""
             echo "Examples:"
-            echo "  $0                      # Release to GitHub and crates.io"
-            echo "  $0 0.1.2                # Release specific version"
-            echo "  $0 --skip-crates        # Release to GitHub only"
+            echo "  $0                      # Prepare release with gopher-orch version"
+            echo "  $0 0.1.2                # Prepare release for specific version"
             echo "  $0 --dry-run            # Preview changes without executing"
             echo ""
-            echo "Environment variables:"
-            echo "  CARGO_REGISTRY_TOKEN    crates.io API token (required for publishing)"
+            echo "After running this script, push to trigger CI:"
+            echo "  git push origin br_release"
+            echo ""
+            echo "CI workflow will:"
+            echo "  - Create GitHub Release with native binaries"
+            echo "  - Publish to crates.io"
             echo ""
             exit 0
             ;;
@@ -109,13 +103,6 @@ if [ "$DRY_RUN" = true ]; then
     echo -e "${YELLOW}DRY RUN MODE - No changes will be made${NC}"
     echo ""
 fi
-
-if [ "$PUBLISH_CRATES" = true ]; then
-    echo -e "${CYAN}Publishing to: GitHub + crates.io${NC}"
-else
-    echo -e "${YELLOW}Publishing to: GitHub only (--skip-crates)${NC}"
-fi
-echo ""
 
 # -----------------------------------------------------------------------------
 # Step 1: Fetch latest gopher-orch version from GitHub releases
@@ -165,6 +152,7 @@ echo -e "${YELLOW}Step 2: Determining target version...${NC}"
 if [ -z "$INPUT_VERSION" ]; then
     # No argument provided, use gopher-orch version directly
     TARGET_VERSION="$GOPHER_ORCH_VERSION"
+    CARGO_VERSION="$TARGET_VERSION"
     echo -e "  No version argument provided"
     echo -e "  Using gopher-orch version: ${GREEN}$TARGET_VERSION${NC}"
 else
@@ -177,15 +165,20 @@ else
             exit 1
         fi
         TARGET_VERSION="$INPUT_VERSION"
+        CARGO_VERSION="$TARGET_VERSION"
     elif echo "$INPUT_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
         # X.Y.Z.E format - first 3 parts must match gopher-orch
         INPUT_BASE=$(echo "$INPUT_VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+$/\1/')
+        INPUT_EXT=$(echo "$INPUT_VERSION" | sed -E 's/^[0-9]+\.[0-9]+\.[0-9]+\.([0-9]+)$/\1/')
         if [ "$INPUT_BASE" != "$GOPHER_ORCH_VERSION" ]; then
             echo -e "${RED}Error: Version base $INPUT_BASE does not match gopher-orch version $GOPHER_ORCH_VERSION${NC}"
             echo "Extended version X.Y.Z.E must have X.Y.Z matching gopher-orch."
             exit 1
         fi
         TARGET_VERSION="$INPUT_VERSION"
+        # Convert X.Y.Z.E to X.Y.Z-E for Cargo.toml (semver pre-release format)
+        CARGO_VERSION="${INPUT_BASE}-${INPUT_EXT}"
+        echo -e "  ${CYAN}Note: Cargo version will be ${CARGO_VERSION} (semver format)${NC}"
     else
         echo -e "${RED}Error: Invalid version format '$INPUT_VERSION'${NC}"
         echo "Expected format: X.Y.Z or X.Y.Z.E"
@@ -223,17 +216,17 @@ if [ ! -f "$CARGO_TOML" ]; then
     exit 1
 fi
 
-# Get current version
-CURRENT_VERSION=$(grep -E '^version = "[0-9]+\.[0-9]+\.[0-9]+"' "$CARGO_TOML" | head -1 | sed -E 's/version = "([^"]+)"/\1/')
+# Get current version (matches X.Y.Z or X.Y.Z-N format)
+CURRENT_VERSION=$(grep -E '^version = "' "$CARGO_TOML" | head -1 | sed -E 's/version = "([^"]+)"/\1/')
 echo -e "  Current version: ${YELLOW}$CURRENT_VERSION${NC}"
 
 if [ "$DRY_RUN" = false ]; then
-    # Update version in Cargo.toml
-    sed -i.bak -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+.*\"/version = \"$TARGET_VERSION\"/" "$CARGO_TOML"
+    # Update version in Cargo.toml (use CARGO_VERSION for semver compatibility)
+    sed -i.bak -E "s/^version = \"[^\"]+\"/version = \"$CARGO_VERSION\"/" "$CARGO_TOML"
     rm -f "${CARGO_TOML}.bak"
 fi
 
-echo -e "  Updated to: ${GREEN}$TARGET_VERSION${NC}"
+echo -e "  Updated to: ${GREEN}$CARGO_VERSION${NC}"
 
 # -----------------------------------------------------------------------------
 # Step 5: Check [Unreleased] section has content
@@ -413,71 +406,41 @@ gopher-orch version: $GOPHER_ORCH_VERSION
 Changes:
 $(echo "$UNRELEASED_CONTENT" | head -15)
 "
+
+    # Push the tag to remote
+    echo ""
+    echo -e "${CYAN}Pushing tag $TAG_VERSION to remote...${NC}"
+    git push origin "$TAG_VERSION"
+    echo -e "  ${GREEN}Tag pushed successfully${NC}"
 else
     echo -e "  ${YELLOW}[DRY RUN] Would commit Cargo.toml and CHANGELOG.md${NC}"
     echo -e "  ${YELLOW}[DRY RUN] Would create tag $TAG_VERSION${NC}"
 fi
 
-# -----------------------------------------------------------------------------
-# Step 8: Publish to crates.io
-# -----------------------------------------------------------------------------
-echo ""
-if [ "$PUBLISH_CRATES" = true ]; then
-    echo -e "${YELLOW}Step 8: Publishing to crates.io...${NC}"
-
-    if [ "$DRY_RUN" = true ]; then
-        echo -e "  ${YELLOW}[DRY RUN] Would run: cargo publish${NC}"
-        echo -e "  ${CYAN}Verifying package...${NC}"
-        cargo publish --dry-run 2>&1 | head -20 || true
-    else
-        echo -e "  ${CYAN}Running cargo publish...${NC}"
-
-        # Publish
-        if cargo publish; then
-            echo -e "  ${GREEN}Successfully published to crates.io${NC}"
-        else
-            echo -e "${RED}Error: Failed to publish to crates.io${NC}"
-            echo "The git commit and tag were created. You can manually publish later with:"
-            echo "  cargo publish"
-            exit 1
-        fi
-    fi
-else
-    echo -e "${YELLOW}Step 8: Skipping crates.io publish (--skip-crates)${NC}"
-fi
-
-echo ""
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  Release preparation complete!${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 echo -e "Version:           ${CYAN}$TARGET_VERSION${NC}"
+if [ "$CARGO_VERSION" != "$TARGET_VERSION" ]; then
+    echo -e "Cargo version:     ${CYAN}$CARGO_VERSION${NC} (semver)"
+fi
 echo -e "Tag:               ${CYAN}$TAG_VERSION${NC}"
 echo -e "gopher-orch:       ${CYAN}$GOPHER_ORCH_VERSION${NC}"
-if [ "$PUBLISH_CRATES" = true ]; then
-    echo -e "crates.io:         ${GREEN}Published${NC}"
-else
-    echo -e "crates.io:         ${YELLOW}Skipped${NC}"
-fi
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
 echo "  1. Review the commit: git show HEAD"
-echo "  2. Push to release:   git push origin br_release $TAG_VERSION"
+echo "  2. Push to release:   git push origin br_release"
 echo ""
-echo -e "${CYAN}After pushing:${NC}"
-echo "  - CI workflow will create GitHub Release"
-echo "  - Native libraries will be attached to release"
-if [ "$PUBLISH_CRATES" = false ]; then
-    echo "  - Publish to crates.io manually: cargo publish"
-fi
+echo -e "${CYAN}After pushing, CI will:${NC}"
+echo "  - Create GitHub Release with native binaries"
+echo "  - Publish to crates.io"
 echo ""
 echo -e "${CYAN}Users can install with:${NC}"
-if [ "$PUBLISH_CRATES" = true ]; then
-    echo ""
-    echo "  # From crates.io"
-    echo "  [dependencies]"
-    echo "  gopher-orch = \"$TARGET_VERSION\""
-fi
+echo ""
+echo "  # From crates.io"
+echo "  [dependencies]"
+echo "  gopher-orch = \"$CARGO_VERSION\""
 echo ""
 echo "  # From GitHub"
 echo "  [dependencies]"

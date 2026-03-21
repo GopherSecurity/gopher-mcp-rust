@@ -1,6 +1,6 @@
 [package]
 name = "gopher-mcp-rust"
-version = "0.1.2-9"
+version = "0.1.2-11"
 edition = "2021"
 authors = ["GopherSecurity"]
 description = "Rust SDK for Gopher Orch - AI Agent orchestration framework"

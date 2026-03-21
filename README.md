@@ -1,4 +1,4 @@
-# gopher-orch - Rust SDK
+# gopher-mcp-rust - Rust SDK
 
 Rust SDK for Gopher Orch - AI Agent orchestration framework with native C++ performance.
 
@@ -48,6 +48,7 @@ Rust SDK for Gopher Orch - AI Agent orchestration framework with native C++ perf
 - **Tool Orchestration** - Manage and execute tools across multiple MCP servers
 - **State Management** - Built-in state graph for complex workflows
 - **Memory Safety** - Rust's ownership system with zero-cost abstractions
+- **OAuth 2.0 Authentication** - JWT validation with JWKS support (feature-gated)
 
 ## When to Use This SDK
 
@@ -68,7 +69,7 @@ This SDK is ideal for:
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                  Rust SDK (gopher_orch)                     │
+│                  Rust SDK (gopher_mcp_rust)                 │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
 │  │ GopherAgent │  │ConfigBuilder│  │ Error Types         │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
@@ -95,28 +96,40 @@ This SDK is ideal for:
 
 ## Installation
 
-### Option 1: Cargo (when published)
+### Option 1: From crates.io
 
 ```toml
 [dependencies]
-gopher-orch = "0.1.0"
+gopher-mcp-rust = "0.1.2"
 ```
 
 ### Option 2: Git Dependency
 
 ```toml
 [dependencies]
-gopher-orch = { git = "https://github.com/GopherSecurity/gopher-mcp-rust.git" }
+gopher-mcp-rust = { git = "https://github.com/GopherSecurity/gopher-mcp-rust.git" }
 ```
 
 ### Option 3: Build from Source
 
 See [Building from Source](#building-from-source) section below.
 
+### With Auth Feature
+
+Enable OAuth 2.0 / JWT authentication support:
+
+```toml
+[dependencies]
+gopher-mcp-rust = { version = "0.1.2", features = ["auth"] }
+
+# Or with git
+gopher-mcp-rust = { git = "https://github.com/GopherSecurity/gopher-mcp-rust.git", features = ["auth"] }
+```
+
 ## Quick Start
 
 ```rust
-use gopher_orch::{GopherAgent, ConfigBuilder};
+use gopher_mcp_rust::{GopherAgent, ConfigBuilder};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create an agent with API key (fetches server config from remote API)
@@ -268,10 +281,10 @@ The SDK searches for the native library in this order:
 The main struct for creating and running AI agents:
 
 ```rust
-use gopher_orch::{GopherAgent, ConfigBuilder, AgentResult};
+use gopher_mcp_rust::{GopherAgent, ConfigBuilder, AgentResult};
 
 // Initialize the library (called automatically on first create)
-gopher_orch::init()?;
+gopher_mcp_rust::init()?;
 
 // Create with API key (fetches server config from remote API)
 let config = ConfigBuilder::new()
@@ -317,7 +330,7 @@ let detailed: AgentResult = agent.run_detailed("Your prompt here");
 drop(agent);
 
 // Shutdown library
-gopher_orch::shutdown();
+gopher_mcp_rust::shutdown();
 ```
 
 ### ConfigBuilder
@@ -325,7 +338,7 @@ gopher_orch::shutdown();
 Builder for creating agent configurations:
 
 ```rust
-use gopher_orch::ConfigBuilder;
+use gopher_mcp_rust::ConfigBuilder;
 
 // With API key
 let config = ConfigBuilder::new()
@@ -351,7 +364,7 @@ assert!(!config.has_server_config());
 The SDK provides typed errors for different failure scenarios:
 
 ```rust
-use gopher_orch::{GopherAgent, ConfigBuilder, Error};
+use gopher_mcp_rust::{GopherAgent, ConfigBuilder, Error};
 
 fn main() {
     let config = ConfigBuilder::new()
@@ -383,7 +396,7 @@ fn main() {
 ### Basic Usage with API Key
 
 ```rust
-use gopher_orch::{GopherAgent, ConfigBuilder};
+use gopher_mcp_rust::{GopherAgent, ConfigBuilder};
 use std::env;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -407,7 +420,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Using Local MCP Servers
 
 ```rust
-use gopher_orch::{GopherAgent, ConfigBuilder};
+use gopher_mcp_rust::{GopherAgent, ConfigBuilder};
 
 const SERVER_CONFIG: &str = r#"{
     "succeeded": true,
@@ -464,6 +477,59 @@ cd examples/server3002 && npm install && npm run dev
 # Terminal 3: Run the Rust client
 ANTHROPIC_API_KEY=your-key cargo run --example client_example_json
 ```
+
+### Auth MCP Server Example
+
+The `examples/auth` directory contains a complete OAuth 2.0 protected MCP server example using Axum:
+
+```bash
+cd examples/auth
+
+# Run with auth disabled (development mode)
+./run_example.sh --no-auth
+
+# Run with full OAuth support
+./run_example.sh
+```
+
+**Features:**
+- OAuth 2.0 / OIDC discovery endpoints (RFC 8414, RFC 9728)
+- JWT token validation via native library
+- Scope-based authorization for MCP tools
+- Example weather tools with different scope requirements
+
+**Available Tools:**
+
+| Tool | Scope Required | Description |
+|------|----------------|-------------|
+| `get-weather` | None | Get current weather for a city |
+| `get-forecast` | `mcp:read` | Get 5-day weather forecast |
+| `get-weather-alerts` | `mcp:admin` | Get weather alerts for a region |
+
+**Using the Auth Client:**
+
+```rust
+use gopher_mcp_rust::GopherAuthClient;
+
+// Create auth client with JWKS endpoint
+let client = GopherAuthClient::new(
+    "https://auth.example.com/.well-known/jwks.json",
+    "https://auth.example.com"
+)?;
+
+// Validate a JWT token
+let result = client.validate_token("eyJ...", 60);
+if result.valid {
+    println!("Token is valid!");
+    println!("Subject: {}", result.payload.sub);
+    println!("Scopes: {:?}", result.payload.scope);
+}
+
+// Extract payload without validation
+let payload = client.extract_payload("eyJ...")?;
+```
+
+See [examples/auth/README.md](examples/auth/README.md) for full documentation.
 
 ---
 
@@ -633,7 +699,7 @@ Contributions are welcome! Please read our contributing guidelines.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+Apache License 2.0 - see [LICENSE](LICENSE) file for details.
 
 ## Links
 

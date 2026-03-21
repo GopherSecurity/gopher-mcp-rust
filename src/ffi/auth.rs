@@ -5,7 +5,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use gopher_orch::ffi::auth::GopherAuthClient;
+//! use gopher_mcp_rust::ffi::auth::GopherAuthClient;
 //!
 //! let client = GopherAuthClient::new(
 //!     "https://auth.example.com/.well-known/jwks.json",

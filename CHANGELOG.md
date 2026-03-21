@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2.11] - 2026-03-22
+
+## [0.1.2.10] - 2026-03-21
+
+## [0.1.2.9] - 2026-03-21
+
+## [0.1.2.8] - 2026-03-21
+
+## [0.1.2.7] - 2026-03-21
+
+## [0.1.2.6] - 2026-03-21
+
+## [0.1.2.5] - 2026-03-21
+
+## [0.1.2.4] - 2026-03-21
+
+## [0.1.2.3] - 2026-03-21
+
+## [0.1.2.1] - 2026-03-21
+
+## [0.1.2] - 2026-03-20
+
 ### Added
 - Initial release of gopher-mcp-rust SDK
 - Rust bindings for gopher-orch native library via FFI
@@ -21,6 +43,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `default` - Core functionality without auth
 - `auth` - OAuth 2.0 token validation via native library
 
+
+
+
+
+
+
+
+
+
+
+
 ---
 
-[Unreleased]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/HEAD
+[Unreleased]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2.11...HEAD
+[0.1.2.11]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2.10...v0.1.2.11
+[0.1.2.10]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2.9...v0.1.2.10
+[0.1.2.9]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2.8...v0.1.2.9
+[0.1.2.8]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2.7...v0.1.2.8
+[0.1.2.7]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2.6...v0.1.2.7
+[0.1.2.6]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2.5...v0.1.2.6
+[0.1.2.5]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2.4...v0.1.2.5
+[0.1.2.4]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2.3...v0.1.2.4
+[0.1.2.3]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2.1...v0.1.2.3
+[0.1.2.1]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2...v0.1.2.1
+[0.1.2]: https://github.com/GopherSecurity/gopher-mcp-rust/releases/tag/v0.1.2

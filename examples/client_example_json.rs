@@ -1,6 +1,6 @@
 //! Example using JSON server configuration.
 
-use gopher_orch::{ConfigBuilder, GopherAgent};
+use gopher_mcp_rust::{ConfigBuilder, GopherAgent};
 use std::env;
 
 /// Server configuration for local MCP servers

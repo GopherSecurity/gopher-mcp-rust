@@ -1,11 +1,11 @@
-//! # Gopher Orch Rust SDK
+//! # Gopher MCP Rust SDK
 //!
 //! Rust SDK for Gopher Orch - AI Agent orchestration framework with native C++ performance.
 //!
 //! ## Quick Start
 //!
 //! ```rust,no_run
-//! use gopher_orch::{GopherAgent, ConfigBuilder};
+//! use gopher_mcp_rust::{GopherAgent, ConfigBuilder};
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Create agent with server configuration
