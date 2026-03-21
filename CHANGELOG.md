@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2.11] - 2026-03-22
+
 ## [0.1.2.10] - 2026-03-21
 
 ## [0.1.2.9] - 2026-03-21
@@ -51,9 +53,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
 ---
 
-[Unreleased]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2.10...HEAD
+[Unreleased]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2.11...HEAD
+[0.1.2.11]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2.10...v0.1.2.11
 [0.1.2.10]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2.9...v0.1.2.10
 [0.1.2.9]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2.8...v0.1.2.9
 [0.1.2.8]: https://github.com/GopherSecurity/gopher-mcp-rust/compare/v0.1.2.7...v0.1.2.8
